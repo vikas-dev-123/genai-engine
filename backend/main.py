@@ -6,7 +6,6 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-import redis.asyncio as redis
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +16,7 @@ from db.base import Base
 from db.session import engine
 from middleware.logging_middleware import LoggingMiddleware
 from middleware.rate_limiter import RateLimiterMiddleware
+from redis_client import close_shared_redis, get_shared_redis
 from routers import auth_router, chat_router, rag_router, voice_router
 
 
@@ -48,11 +48,13 @@ async def lifespan(app: FastAPI):
             cache_logger_on_first_use=True,
         )
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     os.makedirs(settings.FAISS_INDEX_DIR, exist_ok=True)
     os.makedirs(settings.WORKSPACE_DIR, exist_ok=True)
+    if settings.DATABASE_URL.startswith("sqlite"):
+        os.makedirs("data", exist_ok=True)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     logger = structlog.get_logger("jarvis")
     logger.info("Jarvis AI started.", model=settings.GEMINI_MODEL)
@@ -60,6 +62,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Jarvis AI shutting down")
+    await close_shared_redis()
     await engine.dispose()
 
 
@@ -96,15 +99,11 @@ async def health() -> dict:
     except Exception:
         db_state = "error"
 
-    client: redis.Redis | None = None
     try:
-        client = redis.from_url(settings.REDIS_URL)
+        client = await get_shared_redis()
         await client.ping()
     except Exception:
         redis_state = "error"
-    finally:
-        if client is not None:
-            await client.aclose()
 
     return {
         "status": "healthy" if db_state == "connected" and redis_state == "connected" else "degraded",

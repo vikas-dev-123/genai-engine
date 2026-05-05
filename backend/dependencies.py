@@ -4,31 +4,17 @@ from collections.abc import AsyncGenerator
 from typing import Any
 import uuid
 
-import redis.asyncio as redis
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
 from db.session import AsyncSessionLocal
 from models.user import User
+from redis_client import get_shared_redis
 from services.auth_service import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
-
-_redis_pool: redis.ConnectionPool | None = None
-
-
-def _get_redis_pool() -> redis.ConnectionPool:
-    """Lazily create a shared Redis connection pool."""
-    global _redis_pool
-    if _redis_pool is None:
-        _redis_pool = redis.ConnectionPool.from_url(
-            settings.REDIS_URL,
-            decode_responses=False,
-        )
-    return _redis_pool
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -40,9 +26,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
-async def get_redis() -> redis.Redis:
-    """Return a Redis client using the shared pool."""
-    return redis.Redis(connection_pool=_get_redis_pool())
+async def get_redis():
+    """Return the shared Redis (or fake Redis) client."""
+    return await get_shared_redis()
 
 
 async def get_current_user(

@@ -1,0 +1,3 @@
+# Optional: local speech-to-text (may need FFmpeg + MSVC build tools on Windows, or use Docker).
+# pip install -r requirements.txt && pip install -r requirements-voice.txt
+faster-whisper==1.0.1

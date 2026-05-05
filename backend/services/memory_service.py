@@ -15,6 +15,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
 from config import settings
+from redis_client import get_shared_redis
 from utils.embedder import embedder
 
 SHORT_TERM_TTL_SECONDS = 24 * 3600
@@ -33,19 +34,8 @@ def _normalize_vectors(vectors: np.ndarray) -> np.ndarray:
 class MemoryService:
     """Hybrid memory layer for chat context."""
 
-    def __init__(self) -> None:
-        self._redis_pool: redis.ConnectionPool | None = None
-
-    def _get_pool(self) -> redis.ConnectionPool:
-        if self._redis_pool is None:
-            self._redis_pool = redis.ConnectionPool.from_url(
-                settings.REDIS_URL,
-                decode_responses=True,
-            )
-        return self._redis_pool
-
     async def _redis(self) -> redis.Redis:
-        return redis.Redis(connection_pool=self._get_pool())
+        return await get_shared_redis()
 
     def _memory_key(self, user_id: str, conversation_id: str) -> str:
         return f"memory:{user_id}:{conversation_id}"

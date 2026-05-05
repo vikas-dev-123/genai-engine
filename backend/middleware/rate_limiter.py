@@ -11,16 +11,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import settings
+from redis_client import get_shared_redis
 from services.auth_service import decode_token
-
-_pool: redis.ConnectionPool | None = None
-
-
-def _redis_pool() -> redis.ConnectionPool:
-    global _pool
-    if _pool is None:
-        _pool = redis.ConnectionPool.from_url(settings.REDIS_URL, decode_responses=True)
-    return _pool
 
 
 class RateLimiterMiddleware(BaseHTTPMiddleware):
@@ -50,7 +42,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
 
         window = int(time.time() / settings.RATE_LIMIT_WINDOW_SECONDS)
         key = f"ratelimit:{identifier}:{window}"
-        client = redis.Redis(connection_pool=_redis_pool())
+        client = await get_shared_redis()
         try:
             count = await client.incr(key)
             if int(count) == 1:

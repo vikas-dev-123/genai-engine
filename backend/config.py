@@ -1,16 +1,24 @@
 """Application configuration loaded from environment."""
 
-from typing import Any
+from pathlib import Path
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_BACKEND_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _BACKEND_DIR.parent
+
+_env_files: list[str] = []
+for candidate in (_REPO_ROOT / ".env", _BACKEND_DIR / ".env"):
+    if candidate.is_file():
+        _env_files.append(str(candidate))
 
 
 class Settings(BaseSettings):
     """Central configuration for Jarvis AI backend."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_env_files or ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -19,7 +27,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Jarvis AI"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    # Declared as str|list so .env comma-separated values are not JSON-decoded by pydantic-settings.
+    CORS_ORIGINS: str | list[str] = "http://localhost:3000"
 
     # Gemini
     GEMINI_API_KEY: str
@@ -29,9 +38,11 @@ class Settings(BaseSettings):
     # Embeddings (Gemini free)
     EMBEDDING_MODEL: str = "models/text-embedding-004"
 
-    # Database
-    DATABASE_URL: str
+    # Database (default: local SQLite file — override for Postgres in production/Docker)
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/jarvis.db"
     REDIS_URL: str = "redis://localhost:6379/0"
+    # Use in-process fake Redis (no Redis server). OK for local dev; use real Redis in production.
+    USE_FAKE_REDIS: bool = False
 
     # Auth
     JWT_SECRET_KEY: str
@@ -51,20 +62,17 @@ class Settings(BaseSettings):
     FAISS_INDEX_DIR: str = "./data/faiss"
 
     # Tools
-    ALLOWED_API_DOMAINS: list[str] = [
-        "api.github.com",
-        "httpbin.org",
-    ]
+    ALLOWED_API_DOMAINS: str | list[str] = "api.github.com,httpbin.org"
     WORKSPACE_DIR: str = "./data/workspace"
 
     # Rate limiting
     RATE_LIMIT_REQUESTS: int = 60
     RATE_LIMIT_WINDOW_SECONDS: int = 60
 
-    @field_validator("CORS_ORIGINS", "ALLOWED_API_DOMAINS", mode="before")
+    @field_validator("CORS_ORIGINS", "ALLOWED_API_DOMAINS", mode="after")
     @classmethod
-    def parse_comma_separated_list(cls, v: Any) -> list[str] | Any:
-        """Allow comma-separated env strings for list fields."""
+    def ensure_str_list(cls, v: str | list[str]) -> list[str]:
+        """Normalize comma-separated env strings to list[str]."""
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v

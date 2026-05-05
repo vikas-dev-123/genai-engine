@@ -6,12 +6,13 @@ import asyncio
 import hashlib
 import os
 import tempfile
+from typing import Any
 
 import redis.asyncio as redis
-from faster_whisper import WhisperModel
 from pydub import AudioSegment
 
 from config import settings
+from redis_client import get_shared_redis
 
 try:
     from elevenlabs.client import ElevenLabs
@@ -20,29 +21,47 @@ except ImportError:  # pragma: no cover
 
 
 class VoiceService:
-    """Local Whisper STT with optional ElevenLabs TTS and pyttsx3 fallback."""
+    """Local Whisper STT (optional) with ElevenLabs / pyttsx3 TTS."""
 
     def __init__(self) -> None:
-        self.whisper = WhisperModel(
-            settings.WHISPER_MODEL,
-            device="cpu",
-            compute_type="int8",
-        )
+        self._whisper: Any | None = None
         key = (settings.ELEVENLABS_API_KEY or "").strip()
         if key and ElevenLabs is not None:
             self.tts_client = ElevenLabs(api_key=key)
         else:
             self.tts_client = None
-        self._redis_pool = redis.ConnectionPool.from_url(
-            settings.REDIS_URL,
-            decode_responses=False,
-        )
 
-    async def _redis(self) -> redis.Redis:
-        return redis.Redis(connection_pool=self._redis_pool)
+    def _load_whisper(self) -> Any:
+        """Load faster-whisper lazily (heavy; optional extra on Windows)."""
+        if self._whisper is not None:
+            return self._whisper
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise RuntimeError(
+                "Speech-to-text requires the `faster-whisper` package. "
+                "Install optional voice deps: pip install -r requirements-voice.txt"
+            ) from exc
+        self._whisper = WhisperModel(
+            settings.WHISPER_MODEL,
+            device="cpu",
+            compute_type="int8",
+        )
+        return self._whisper
 
     async def transcribe(self, audio_bytes: bytes) -> dict:
         """Transcribe uploaded audio with faster-whisper."""
+        try:
+            whisper = self._load_whisper()
+        except RuntimeError as exc:
+            return {
+                "transcript": "",
+                "language": "",
+                "confidence": 0.0,
+                "duration_seconds": 0.0,
+                "error": str(exc),
+            }
+
         tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=".bin")
         tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         try:
@@ -60,7 +79,7 @@ class VoiceService:
                 with open(tmp_in.name, "rb") as src, open(tmp_out.name, "wb") as dst:
                     dst.write(src.read())
             segments, info = await asyncio.to_thread(
-                self.whisper.transcribe,
+                whisper.transcribe,
                 tmp_out.name,
                 beam_size=5,
                 language=None,
@@ -84,13 +103,13 @@ class VoiceService:
         """Synthesize speech, using ElevenLabs when configured."""
         digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
         cache_key = f"tts:{digest}"
-        client = await self._redis()
+        client = await get_shared_redis()
         try:
             cached = await client.get(cache_key)
         except redis.RedisError:
             cached = None
         if cached:
-            return bytes(cached)
+            return bytes(cached) if isinstance(cached, (bytes, bytearray)) else str(cached).encode("latin-1")
 
         clip = text[:2000]
         audio_bytes: bytes

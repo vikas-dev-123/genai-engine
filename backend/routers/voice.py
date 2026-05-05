@@ -34,12 +34,19 @@ async def transcribe_audio(
     if not audio_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file")
     try:
-        return await voice_service.transcribe(audio_bytes)
+        out = await voice_service.transcribe(audio_bytes)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Transcription failed: {exc!s}",
         ) from exc
+
+    if isinstance(out, dict) and out.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=out["error"],
+        )
+    return out
 
 
 def byte_iterator(data: bytes):
