@@ -1,12 +1,12 @@
-# Jarvis AI Assistant
+# GenAI Engine
 
-**Jarvis** is a full-stack, production-oriented AI assistant you can self-host. It pairs a **FastAPI** backend (Google **Gemini** + **LangChain** tool calling, **RAG**, memory, and optional voice) with a **React** web console styled as a dark HUD. Data stays under your control: **PostgreSQL** for accounts and chat history, **Redis** for caching and rate limits, and **FAISS** on disk for vector search.
+**GenAI Engine** is a full-stack, production-ready AI assistant platform you can self-host. It pairs a **FastAPI** backend (Google **Gemini** + **LangChain** tool calling, **RAG**, memory, and optional voice) with a **React** web console styled as a dark HUD. Data remains under your control: **PostgreSQL** for accounts and chat history, **Redis** for caching and rate limits, and **FAISS** on disk for vector search.
 
 ---
 
 ## Table of contents
 
-1. [What Jarvis does](#what-jarvis-does)
+1. [What GenAI Engine does](#what-genai-engine-does)
 2. [Key capabilities](#key-capabilities)
 3. [Architecture](#architecture)
 4. [Technology stack](#technology-stack)
@@ -21,14 +21,14 @@
 13. [Configuration](#configuration)
 14. [Make targets](#make-targets)
 15. [Troubleshooting](#troubleshooting)
-16. [Extending Jarvis (adding a tool)](#extending-jarvis-adding-a-tool)
+16. [Extending GenAI Engine (adding a tool)](#extending-genai-engine-adding-a-tool)
 17. [License](#license)
 
 ---
 
-## What Jarvis does
+## What GenAI Engine does
 
-Jarvis is designed to act as a **capable assistant** with:
+GenAI Engine is designed to provide a flexible, self-hosted AI assistant platform with:
 
 - **Multi-turn chat** with **server-sent events (SSE)** streaming so tokens appear as they are generated.
 - **Retrieval-augmented generation (RAG)**: upload PDF, TXT, DOCX, or Markdown; chunks are embedded with **Gemini embeddings** and stored in a **per-user FAISS** index. Answers can cite document context.
@@ -73,7 +73,7 @@ The **web UI** supports authentication, conversation sidebar, document upload, R
          │  proxy /api/ …
          ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                     FastAPI — Jarvis API (backend :8000)                      │
+│                     FastAPI — GenAI Engine API (backend :8000)               │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐  ┌─────────────────┐ │
 │  │ Auth router │  │ Chat router  │  │ Voice router  │  │ RAG router      │ │
 │  └──────┬──────┘  └──────┬───────┘  └───────┬───────┘  └────────┬────────┘ │
@@ -137,7 +137,7 @@ The **web UI** supports authentication, conversation sidebar, document upload, R
 ## Repository layout
 
 ```
-jarvis-ai/
+genai-engine/
 ├── backend/                 # FastAPI application
 │   ├── main.py              # App entry, lifespan, middleware, routers
 │   ├── config.py            # Settings from .env
@@ -209,7 +209,7 @@ Optional:
 
 ## Getting started (local, without Docker)
 
-1. Install **PostgreSQL 16** and **Redis 7**. Create database `jarvis` and user matching `.env.example` (or adjust `DATABASE_URL`).
+1. Install **PostgreSQL 16** and **Redis 7**. Create database `genai_engine` and user matching `.env.example` (or adjust `DATABASE_URL`).
 
 2. **Backend:**
 
@@ -464,7 +464,7 @@ All major settings are documented in **`.env.example`**. Summary:
 
 ---
 
-## Extending Jarvis (adding a tool)
+## Extending GenAI Engine (adding a tool)
 
 1. Add a new **`BaseTool`** under `backend/tools/` with a clear **description** and **Pydantic `args_schema`** (so the model knows exact inputs).
 2. Register the tool in **`LLMService._get_tools`** in `backend/services/llm_service.py` (respect per-user tools where needed).
@@ -480,4 +480,4 @@ MIT
 
 ---
 
-*Jarvis AI — local-first assistant with Gemini, RAG, and optional voice.*
+*GenAI Engine — local-first assistant with Gemini, RAG, and optional voice.*
