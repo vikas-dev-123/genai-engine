@@ -108,6 +108,50 @@ The **web UI** supports authentication, conversation sidebar, document upload, R
 3. **Gemini** runs inside an **agent** loop; tool calls and text stream out as **SSE** frames.
 4. On completion, the backend **persists** user and assistant rows, updates **Redis** memory and **FAISS** long-term memory, and refreshes conversation metadata.
 
+### Chat pipeline (sequence diagram + walkthrough)
+
+Below is a concise sequence diagram that shows the runtime flow for a chat turn (SSE streaming) followed by an annotated walkthrough with links to the key implementation files.
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Frontend as "React (Zustand)"
+  participant API as "FastAPI (GenAI Engine)"
+  participant Memory as "Redis (short-term)"
+  participant RAG as "FAISS (long-term)"
+  participant LLM as "Gemini / LangChain Agent"
+
+  Client->>Frontend: Compose message + submit
+  Frontend->>API: POST /api/v1/chat/stream (open SSE)
+  API->>Memory: load short-term buffer for user/conversation
+  API->>RAG: retrieve relevant document chunks (if RAG enabled)
+  API->>LLM: invoke agent with system + short-term + RAG context
+  LLM-->>API: stream tokens and tool_call / tool_result events
+  API-->>Frontend: emit SSE events (data: {...})
+  Frontend->>Frontend: append streaming tokens to UI state (`streamingMessage`)
+  LLM->>API: signal done
+  API->>DB: persist user & assistant messages
+  API->>Memory: update short-term buffer (and optionally FAISS long-term memory)
+  Frontend->>API: refresh conversations / history
+```
+
+Annotated walkthrough (key files):
+
+- **Client / Frontend state and streaming**: `useChatStore` manages `streamingMessage`, `messages`, `isStreaming`, `activeToolCalls`, and optimistic updates. See [frontend/src/store/chatStore.ts](frontend/src/store/chatStore.ts#L1-L220).
+- **Authentication state**: `useAuthStore` keeps `user` and `accessToken` client-side; the refresh token is stored in session storage. See [frontend/src/store/authStore.ts](frontend/src/store/authStore.ts#L1-L120).
+- **SSE endpoint and routing**: the chat router and SSE stream are exposed under `/api/v1/chat/stream` (see [backend/routers/chat.py](backend/routers/chat.py)).
+- **Request-scoped DB session**: async SQLAlchemy session factory used by routers and services. See [backend/db/session.py](backend/db/session.py#L1-L60).
+- **Short-term memory (Redis)**: `MemoryService` reads/writes recent messages into Redis buffers, summarizes when buffers grow, and returns role/content pairs for prompt context. See [backend/services/memory_service.py](backend/services/memory_service.py#L1-L220).
+- **Long-term memory and RAG**: `RagService` handles ingestion, per-user FAISS indexes, and retrieval of document chunks. See [backend/services/rag_service.py](backend/services/rag_service.py#L1-L220).
+- **LLM & agent orchestration**: LLM/agent invocation and tool registration occur in the LLM service / agent executor (see [backend/services/llm_service.py](backend/services/llm_service.py)).
+- **Redis client and lifecycle**: shared async Redis client setup and graceful shutdown. See [backend/redis_client.py](backend/redis_client.py#L1-L80).
+- **App startup and directories**: FAISS and workspace directories are created at startup; health checks exposed at `/health`. See [backend/main.py](backend/main.py#L1-L160).
+
+This diagram + walkthrough should help developers quickly locate where streaming, short-term memory, long-term memory, and persistence are implemented. If you want, I can also:
+
+- Generate a PNG/SVG of the Mermaid diagram and embed it in the README.
+- Add a compact sequence diagram in ASCII for README consumers that don't render Mermaid.
+
 ### External services
 
 | Service | Role |
