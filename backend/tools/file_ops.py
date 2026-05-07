@@ -40,13 +40,14 @@ class FileReadTool(BaseTool):
 
     def __init__(self, user_id: str, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self.workspace = Path(settings.WORKSPACE_DIR) / str(user_id)
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        workspace = Path(settings.WORKSPACE_DIR) / str(user_id)
+        workspace.mkdir(parents=True, exist_ok=True)
+        object.__setattr__(self, "_workspace", workspace)
 
     def _run(self, filename: str) -> str:
         try:
             safe = _sanitize_filename(filename)
-            path = self.workspace / safe
+            path = self._workspace / safe
             if not path.exists() or not path.is_file():
                 return "File not found."
             data = path.read_bytes()[:MAX_READ_BYTES]
@@ -78,13 +79,14 @@ class FileWriteTool(BaseTool):
 
     def __init__(self, user_id: str, **kwargs: object) -> None:
         super().__init__(**kwargs)
-        self.workspace = Path(settings.WORKSPACE_DIR) / str(user_id)
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        workspace = Path(settings.WORKSPACE_DIR) / str(user_id)
+        workspace.mkdir(parents=True, exist_ok=True)
+        object.__setattr__(self, "_workspace", workspace)
 
     def _run(self, filename: str, content: str) -> str:
         try:
             safe = _sanitize_filename(filename)
-            path = self.workspace / safe
+            path = self._workspace / safe
             written = path.write_bytes(content.encode("utf-8"))
             return f"File '{safe}' written successfully ({written} bytes)."
         except ValueError as exc:

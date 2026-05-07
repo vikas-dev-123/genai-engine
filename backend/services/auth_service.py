@@ -13,16 +13,27 @@ from config import settings
 from models.user import User
 from schemas.auth import RegisterRequest
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto", bcrypt__rounds=12)
 
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password with bcrypt."""
+    # bcrypt has a 72-byte input limit; truncate the UTF-8 bytes to avoid runtime errors
+    encoded = password.encode("utf-8")
+    if len(encoded) > 72:
+        encoded = encoded[:72]
+        # decode safely, ignoring incomplete sequences
+        password = encoded.decode("utf-8", errors="ignore")
     return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
+    # Apply same truncation rule used when hashing to ensure verification matches
+    encoded = plain.encode("utf-8")
+    if len(encoded) > 72:
+        encoded = encoded[:72]
+        plain = encoded.decode("utf-8", errors="ignore")
     return pwd_context.verify(plain, hashed)
 
 
