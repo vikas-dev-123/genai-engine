@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .venv/
 dist/
+.pytest_cache/
+.coverage
+# Local runtime data: SQLite DB, FAISS indexes, agent workspaces
+backend/data/

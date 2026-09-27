@@ -6,14 +6,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        "jarvis-bg": "#0a0a0f",
-        "jarvis-surface": "#12121a",
-        "jarvis-border": "#1e1e2e",
-        "jarvis-accent": "#6C63FF",
-        "jarvis-teal": "#00D4AA",
-        "jarvis-text": "#E8E8F0",
-        "jarvis-muted": "#6B6B80",
-        "jarvis-danger": "#FF4757",
+        "engine-bg": "#0a0a0f",
+        "engine-surface": "#12121a",
+        "engine-border": "#1e1e2e",
+        "engine-accent": "#6C63FF",
+        "engine-teal": "#00D4AA",
+        "engine-text": "#E8E8F0",
+        "engine-muted": "#6B6B80",
+        "engine-danger": "#FF4757",
       },
       keyframes: {
         "pulse-glow": {

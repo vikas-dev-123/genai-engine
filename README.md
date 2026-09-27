@@ -18,11 +18,13 @@
 10. [HTTP API reference](#http-api-reference)
 11. [Streaming protocol (SSE)](#streaming-protocol-sse)
 12. [Security and safety](#security-and-safety)
-13. [Configuration](#configuration)
-14. [Make targets](#make-targets)
-15. [Troubleshooting](#troubleshooting)
-16. [Extending GenAI Engine (adding a tool)](#extending-genai-engine-adding-a-tool)
-17. [License](#license)
+13. [Production deployment](#production-deployment)
+14. [Testing and CI](#testing-and-ci)
+15. [Configuration](#configuration)
+16. [Make targets](#make-targets)
+17. [Troubleshooting](#troubleshooting)
+18. [Extending GenAI Engine (adding a tool)](#extending-genai-engine-adding-a-tool)
+19. [License](#license)
 
 ---
 
@@ -49,7 +51,7 @@ The **web UI** supports authentication, conversation sidebar, document upload, R
 | **RAG** | Ingest → chunk → embed → FAISS; keyword search-style **retrieve** API; MMR-style diversity in retrieval |
 | **Tools** | `web_search`, `file_read` / `file_write` (per-user workspace), `api_call` (domain whitelist), `system_command` (command whitelist) |
 | **Voice** | `POST /voice/transcribe`, `POST /voice/synthesize` |
-| **Ops** | **Docker Compose** (Postgres, Redis, API, Nginx frontend); health check; structured logging; Redis rate limiting |
+| **Ops** | **Docker Compose** (Postgres, Redis, Gunicorn/Uvicorn API, Nginx frontend); **Alembic** migrations; health checks; structured JSON logs with request IDs; Redis sliding-window rate limiting; GitHub Actions CI |
 
 ---
 
@@ -106,7 +108,7 @@ The **web UI** supports authentication, conversation sidebar, document upload, R
 1. The client sends a **POST** to `/api/v1/chat/stream` with the user message and optional `conversation_id`.
 2. The backend loads **short-term** and **long-term** memory, and if RAG is enabled, **retrieves** relevant chunks from the user’s document index.
 3. **Gemini** runs inside an **agent** loop; tool calls and text stream out as **SSE** frames.
-4. On completion, the backend **persists** user and assistant rows, updates **Redis** memory and **FAISS** long-term memory, and refreshes conversation metadata.
+4. The user's message is **persisted before** the model runs. The assistant reply is persisted when the stream ends — including a partial reply (marked as interrupted) if the agent fails or the client disconnects mid-stream. On success, **Redis** short-term memory and **FAISS** long-term memory are updated.
 
 ### Chat pipeline (sequence diagram + walkthrough)
 
@@ -140,17 +142,12 @@ Annotated walkthrough (key files):
 - **Client / Frontend state and streaming**: `useChatStore` manages `streamingMessage`, `messages`, `isStreaming`, `activeToolCalls`, and optimistic updates. See [frontend/src/store/chatStore.ts](frontend/src/store/chatStore.ts#L1-L220).
 - **Authentication state**: `useAuthStore` keeps `user` and `accessToken` client-side; the refresh token is stored in session storage. See [frontend/src/store/authStore.ts](frontend/src/store/authStore.ts#L1-L120).
 - **SSE endpoint and routing**: the chat router and SSE stream are exposed under `/api/v1/chat/stream` (see [backend/routers/chat.py](backend/routers/chat.py)).
-- **Request-scoped DB session**: async SQLAlchemy session factory used by routers and services. See [backend/db/session.py](backend/db/session.py#L1-L60).
+- **DB sessions**: routers use a request-scoped async SQLAlchemy session; the chat stream opens its own session because a dependency's session is closed before a `StreamingResponse` finishes. See [backend/db/session.py](backend/db/session.py).
 - **Short-term memory (Redis)**: `MemoryService` reads/writes recent messages into Redis buffers, summarizes when buffers grow, and returns role/content pairs for prompt context. See [backend/services/memory_service.py](backend/services/memory_service.py#L1-L220).
-- **Long-term memory and RAG**: `RagService` handles ingestion, per-user FAISS indexes, and retrieval of document chunks. See [backend/services/rag_service.py](backend/services/rag_service.py#L1-L220).
+- **Long-term memory and RAG**: `RagService` handles ingestion, per-user FAISS indexes, and retrieval of document chunks. Both it and `MemoryService` store vectors through `FaissStore`, which serializes writers with a per-user file lock and writes files atomically. See [backend/services/rag_service.py](backend/services/rag_service.py) and [backend/utils/faiss_store.py](backend/utils/faiss_store.py).
 - **LLM & agent orchestration**: LLM/agent invocation and tool registration occur in the LLM service / agent executor (see [backend/services/llm_service.py](backend/services/llm_service.py)).
 - **Redis client and lifecycle**: shared async Redis client setup and graceful shutdown. See [backend/redis_client.py](backend/redis_client.py#L1-L80).
-- **App startup and directories**: FAISS and workspace directories are created at startup; health checks exposed at `/health`. See [backend/main.py](backend/main.py#L1-L160).
-
-This diagram + walkthrough should help developers quickly locate where streaming, short-term memory, long-term memory, and persistence are implemented. If you want, I can also:
-
-- Generate a PNG/SVG of the Mermaid diagram and embed it in the README.
-- Add a compact sequence diagram in ASCII for README consumers that don't render Mermaid.
+- **App startup and directories**: FAISS and workspace directories are created at startup; health checks exposed at `/health`. See [backend/main.py](backend/main.py).
 
 ### External services
 
@@ -167,14 +164,15 @@ This diagram + walkthrough should help developers quickly locate where streaming
 
 | Layer | Technologies |
 |--------|--------------|
-| **Backend** | Python 3.11, FastAPI, Uvicorn, SQLAlchemy 2 (async), asyncpg, Pydantic v2 |
+| **Backend** | Python 3.11, FastAPI, Gunicorn + Uvicorn workers, SQLAlchemy 2 (async), Alembic, asyncpg, Pydantic v2 |
 | **AI** | `langchain`, `langchain-google-genai`, `langchain-core`, Google Generative AI SDK |
-| **Vectors** | `faiss-cpu`, on-disk indexes; Gemini `text-embedding-004` |
+| **Vectors** | `faiss-cpu`, on-disk indexes guarded by `filelock`; Gemini `gemini-embedding-001` |
 | **Data** | PostgreSQL 16, Redis 7 |
 | **Auth** | `python-jose[cryptography]`, `passlib[bcrypt]` |
 | **Voice** | `faster-whisper`, `pydub`, `elevenlabs`, `pyttsx3` |
 | **Frontend** | React 18, Vite 5, TypeScript (strict), Tailwind CSS, Zustand, Axios, react-markdown |
-| **Containers** | Docker, Docker Compose; frontend image uses Nginx |
+| **Containers** | Docker, Docker Compose (production file + dev overlay); frontend image uses Nginx |
+| **Quality** | pytest (+ pytest-asyncio), black, isort, GitHub Actions |
 
 ---
 
@@ -192,11 +190,15 @@ genai-engine/
 │   ├── services/            # auth, llm, memory, rag, voice
 │   ├── tools/               # LangChain tools
 │   ├── db/                  # engine, session, Base
-│   ├── middleware/         # logging, rate limiting
-│   └── utils/               # chunking, embeddings, SSE helpers
+│   ├── middleware/          # logging (request IDs), rate limiting
+│   ├── utils/               # chunking, embeddings, FAISS store, SSE helpers
+│   ├── alembic/             # database migrations
+│   └── tests/               # pytest suite (no network, no API key needed)
 ├── frontend/                # React SPA
 │   └── src/                 # components, api, hooks, stores, styles
-├── docker-compose.yml
+├── .github/workflows/ci.yml # lint, tests, frontend build, Docker builds
+├── docker-compose.yml       # production stack
+├── docker-compose.dev.yml   # dev overlay: hot reload + published ports
 ├── .env.example
 ├── Makefile
 └── README.md
@@ -227,35 +229,39 @@ Optional:
 
 3. **Edit `.env`** and set at minimum:
 
-   - `GEMINI_API_KEY` — your Gemini key  
-   - `JWT_SECRET_KEY` — long random secret (e.g. `openssl rand -hex 32` on Unix, or `make key` from the Makefile)
+   - `GEMINI_API_KEY` — your Gemini key
+   - `JWT_SECRET_KEY` — random secret of at least 32 characters (`make key` or `openssl rand -hex 32`)
+   - `POSTGRES_PASSWORD` — random letters and digits
 
-   Compose **overrides** `DATABASE_URL` and `REDIS_URL` for the backend container to point at the `postgres` and `redis` services. Other variables (Gemini, JWT, etc.) are read from `.env`.
+   Compose sets `DATABASE_URL`, `REDIS_URL`, `USE_FAKE_REDIS=false` and `ENVIRONMENT=production` for the backend container. Other variables are read from `.env`.
 
 4. **Start the stack:**
 
    ```bash
-   make dev
+   make up          # or: docker compose up -d --build
    ```
-   or: `docker compose up --build`
 
-5. **Open the app:**
+   The backend container runs `alembic upgrade head` on start, then serves the API with Gunicorn.
 
-   | URL | Purpose |
-   |-----|---------|
-   | [http://localhost:3000](http://localhost:3000) | Web UI (Nginx → API) |
-   | [http://localhost:8000/docs](http://localhost:8000/docs) | OpenAPI (Swagger) |
-   | [http://localhost:8000/health](http://localhost:8000/health) | Health probe |
+5. **Open the app** at [http://localhost:3000](http://localhost:3000) (`HTTP_PORT` in `.env`). Only this port is published; Postgres, Redis and the API stay on the internal Docker network. Health: [http://localhost:3000/health](http://localhost:3000/health).
 
 6. **First run:** register an account in the UI, then start chatting. Upload documents under **Knowledge Base** when you want RAG.
+
+### Development mode (hot reload)
+
+```bash
+make dev   # docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+This mounts `backend/` into the container, runs Uvicorn with `--reload`, sets `ENVIRONMENT=development` (Swagger at [http://localhost:8000/docs](http://localhost:8000/docs)), and publishes ports 8000, 5432 and 6379.
 
 ---
 
 ## Getting started (local, without Docker)
 
-1. Install **PostgreSQL 16** and **Redis 7**. Create database `genai_engine` and user matching `.env.example` (or adjust `DATABASE_URL`).
+The quickest local setup needs no database or Redis server: the `.env.example` defaults use **SQLite** and in-process **fakeredis** (`USE_FAKE_REDIS=true`).
 
-2. **Backend:**
+1. **Backend:**
 
    ```bash
    cd backend
@@ -263,15 +269,13 @@ Optional:
    .venv\Scripts\activate          # Windows
    # source .venv/bin/activate     # macOS/Linux
    pip install -r requirements.txt
-   ```
-
-   From `backend/`, with `.env` populated:
-
-   ```bash
+   alembic upgrade head            # create/upgrade the schema
    uvicorn main:app --reload --host 0.0.0.0 --port 8000
    ```
 
-3. **Frontend:**
+   To use Postgres and Redis instead, point `DATABASE_URL` at `postgresql+asyncpg://...`, set `USE_FAKE_REDIS=false`, and run `alembic upgrade head` again.
+
+2. **Frontend:**
 
    ```bash
    cd frontend
@@ -285,7 +289,7 @@ Optional:
 
 Some dependencies may ship **source distributions** that require **Visual Studio Build Tools** (C++ workload) or **Rust** toolchain. If `pip install` fails building wheels (e.g. `av`, `pyreqwest-impersonate`), prefer **Docker** or **WSL2** for the backend, or install [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/).
 
-**Dependency note:** `langchain-google-genai` expects `google-generativeai` in the **0.5.x** range; the pinned requirements follow that constraint.
+**Dependency notes:** `langchain-google-genai` expects `google-generativeai` in the **0.5.x** range, and `passlib` 1.7.4 needs `bcrypt` 4.0.x; the pinned requirements follow both constraints.
 
 ---
 
@@ -399,7 +403,7 @@ Example response shape:
 {
   "status": "healthy",
   "version": "1.0.0",
-  "model": "gemini-1.5-flash",
+  "model": "gemini-2.5-flash",
   "db": "connected",
   "redis": "connected"
 }
@@ -432,23 +436,67 @@ JSON envelope:
 | `tool_call` | `{ "name": "...", "input": { ... } }` |
 | `tool_result` | `{ "name": "...", "output": "..." }` (truncated in stream) |
 | `done` | `{ "conversation_id": "...", "message_id": "..." }` |
-| `error` | Error message string |
+| `error` | User-safe error message string (details are logged server-side with the request ID) |
 
-Clients should keep the connection open until `done` or `error`.
+Clients should keep the connection open until `done` or `error`. A request for a conversation that does not exist or belongs to another user fails with HTTP **404** before the stream starts.
 
 ---
 
 ## Security and safety
 
-- **Secrets** must live in `.env` or a secret manager — do not commit real keys.
-- **JWT** access tokens are short-lived; refresh tokens should be stored with care.
-- **Rate limiting** uses Redis (per user id from JWT when present, else IP).
+- **Secrets** must live in `.env` or a secret manager — do not commit real keys. In production the app refuses to start with a short or placeholder `JWT_SECRET_KEY`, with in-process Redis, or with a wildcard CORS origin.
+- **Passwords** are hashed with `bcrypt_sha256`, so the whole password counts (plain bcrypt ignores bytes after 72).
+- **JWT** access tokens are short-lived. Refresh tokens are only honoured for users that still exist and are active.
+- **Rate limiting** is a Redis sliding window per user id (from the JWT) or client IP; Gunicorn trusts Nginx's `X-Forwarded-For` so IPs are real. Rejected requests get `429` with `Retry-After`.
+- **Ownership checks**: conversations and documents of other users return `404`.
 - **File tools** are scoped to **`WORKSPACE_DIR/<user_id>`** with path sanitization.
 - **`api_call`** only allows hostnames listed in **`ALLOWED_API_DOMAINS`**.
-- **`system_command`** only allows a fixed whitelist (`ls`, `pwd`, `echo`, `date`, `whoami`, `df`, `du`).
+- **`system_command`** only allows a fixed whitelist (`ls`, `pwd`, `echo`, `date`, `whoami`, `df`, `du`), runs inside the user's workspace, and rejects absolute paths, `~` and `..`.
+- **Nginx** sends `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy` headers; API docs (`/docs`, `/openapi.json`) are disabled in production.
 - **CORS** is configurable via **`CORS_ORIGINS`**.
 
-For production, also: TLS termination, strong Postgres/Redis passwords, secret rotation, and network policies appropriate for your environment.
+Still your responsibility when deploying: TLS termination in front of Nginx, secret rotation, backups of the Postgres and FAISS volumes, and network policies for your environment.
+
+---
+
+## Production deployment
+
+`docker-compose.yml` is the production stack:
+
+| Concern | How it is handled |
+|---------|-------------------|
+| Schema | `docker-entrypoint.sh` runs `alembic upgrade head` before the server starts |
+| App server | Gunicorn supervising `WEB_CONCURRENCY` Uvicorn workers; graceful shutdown |
+| Health | Docker `HEALTHCHECK` on `/health` (checks DB and Redis); Nginx waits for a healthy API |
+| Restarts | `restart: unless-stopped` on every service |
+| Exposure | Only Nginx is published; Postgres/Redis/API are internal |
+| Persistence | Named volumes for Postgres, Redis (AOF enabled), FAISS indexes and workspaces |
+| Concurrency | FAISS index + metadata writes are serialized with a per-user file lock and written atomically, so multiple workers are safe |
+| Observability | JSON logs in production; each request gets an `X-Request-ID` that appears in every log line for that request |
+| Uploads | Nginx `client_max_body_size` matches the backend's 50 MB limit |
+
+**Schema changes:** edit the models, then `make migration m="describe change"`, review the generated file in `backend/alembic/versions/`, and commit it. A test fails if models and migrations drift apart.
+
+**Upgrading an existing database created before migrations existed:** run `alembic stamp 0001` once, then `alembic upgrade head`.
+
+---
+
+## Testing and CI
+
+```bash
+cd backend
+python -m pytest          # or: make test
+```
+
+The suite uses a temporary SQLite database, fakeredis, a deterministic fake embedder and a scripted fake agent, so it needs **no network and no API key**. It covers:
+
+- **Auth** — registration, login, token types, refresh for deactivated users, long-password hashing
+- **Chat** — SSE event order, persistence, tool-call storage, history passed to the agent, failures and client disconnects keeping partial replies, cross-user access (404), deletion clearing memories, short-term memory summarization
+- **RAG** — chunking, ingestion, retrieval relevance and isolation, MMR diversity, deletion, background upload, concurrent ingestion consistency
+- **Tools** — workspace isolation, path traversal, command and domain allowlists
+- **Platform** — health, request IDs, rate limiting, production config guards, migrations matching the models (upgrade + downgrade)
+
+GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs `black`/`isort` checks and the tests, type-checks and builds the frontend, validates both compose files, and builds both Docker images on every push to `main` and every pull request.
 
 ---
 
@@ -459,11 +507,11 @@ All major settings are documented in **`.env.example`**. Summary:
 | Variable | Purpose |
 |----------|---------|
 | `GEMINI_API_KEY` | Required — Gemini API access |
-| `GEMINI_MODEL` | Default `gemini-1.5-flash` |
-| `EMBEDDING_MODEL` | Default `models/text-embedding-004` |
-| `DATABASE_URL` | Async SQLAlchemy URL — use `postgresql+asyncpg://...` |
-| `REDIS_URL` | Redis connection URL |
-| `JWT_SECRET_KEY` | Required — signing key for JWTs |
+| `GEMINI_MODEL` | Default `gemini-2.5-flash` |
+| `EMBEDDING_MODEL` | Default `models/gemini-embedding-001` (changing it requires re-indexing documents) |
+| `DATABASE_URL` | Async SQLAlchemy URL — `sqlite+aiosqlite:///...` locally, `postgresql+asyncpg://...` in production |
+| `REDIS_URL` / `USE_FAKE_REDIS` | Redis connection URL / use in-process fakeredis (development only) |
+| `JWT_SECRET_KEY` | Required — signing key for JWTs (≥ 32 chars in production) |
 | `JWT_ALGORITHM` | Default `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` | Token lifetimes |
 | `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | Optional TTS |
@@ -474,25 +522,28 @@ All major settings are documented in **`.env.example`**. Summary:
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` / `MAX_RAG_RESULTS` | RAG tuning |
 | `CORS_ORIGINS` | Comma-separated allowed browser origins |
 | `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS` | Throttling |
-| `ENVIRONMENT` | e.g. `development` vs `production` (logging style) |
+| `ENVIRONMENT` | `development` or `production` (JSON logs, no API docs, startup safety checks) |
 | `LOG_LEVEL` | e.g. `INFO` |
+| `POSTGRES_PASSWORD` | Required by Docker Compose |
+| `HTTP_PORT` / `WEB_CONCURRENCY` | Published web port / Gunicorn worker count (Docker) |
 
 ---
 
 ## Make targets
 
-| Target | Command | Description |
-|--------|---------|-------------|
-| `make dev` | `docker compose up --build` | Run full stack |
-| `make build` | `docker compose build` | Build images |
-| `make down` | `docker compose down` | Stop stack |
-| `make logs` | `docker compose logs -f backend` | Tail backend logs |
-| `make test` | `pytest` in `backend/tests` | Run tests |
-| `make shell-backend` | Exec shell in backend container | Debug |
-| `make shell-db` | `psql` into Postgres | Debug |
-| `make clean` | Down + volumes | **Destructive** — wipes DB/redis volumes |
-| `make key` | Print random 32-byte hex | Suggested `JWT_SECRET_KEY` |
-| `make format` | `black` + `isort` | Format backend |
+| Target | Description |
+|--------|-------------|
+| `make up` | Build and start the production stack in the background |
+| `make down` | Stop the stack |
+| `make logs` | Tail backend logs |
+| `make dev` | Development stack with hot reload and published ports |
+| `make test` | Run the backend test suite |
+| `make lint` / `make format` | Check / apply `black` + `isort` |
+| `make migrate` | `alembic upgrade head` against `DATABASE_URL` |
+| `make migration m="..."` | Autogenerate a migration from model changes |
+| `make shell-backend` / `make shell-db` | Shell in the API container / `psql` into Postgres |
+| `make clean` | **Destructive** — stops the stack and deletes all volumes |
+| `make key` | Print a random 32-byte hex secret |
 
 ---
 
@@ -505,6 +556,9 @@ All major settings are documented in **`.env.example`**. Summary:
 | Database connection refused in Docker | Wait for Postgres healthcheck; confirm Compose `DATABASE_URL` override for `backend`. |
 | Windows `pip install` fails | Use Docker, or install MSVC Build Tools / use WSL2 (see [Getting started local](#getting-started-local-without-docker)). |
 | RAG returns empty | Ensure documents show `ready`; embeddings need valid Gemini key; check `FAISS_INDEX_DIR` permissions and mounts. |
+| Upload fails with "Embedding dimension mismatch" | The embedding model changed. Delete `FAISS_INDEX_DIR/<user_id>/docs` (and `memory`) and re-upload. |
+| Backend exits with "Unsafe production configuration" | Fix the listed settings (`JWT_SECRET_KEY`, `USE_FAKE_REDIS`, `CORS_ORIGINS`). |
+| `alembic upgrade` says a table already exists | The database predates migrations: run `alembic stamp 0001` once. |
 
 ---
 

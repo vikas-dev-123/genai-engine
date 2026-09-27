@@ -1,8 +1,9 @@
-"""Sliding-window Redis rate limiting."""
+"""Sliding-window Redis rate limiting (per user, or per client IP when anonymous)."""
 
 from __future__ import annotations
 
 import time
+import uuid
 from typing import Callable
 
 import redis.asyncio as redis
@@ -40,19 +41,29 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         if identifier is None:
             identifier = request.client.host if request.client else "anonymous"
 
-        window = int(time.time() / settings.RATE_LIMIT_WINDOW_SECONDS)
-        key = f"ratelimit:{identifier}:{window}"
+        # Sliding-window log: one sorted-set member per request, scored by timestamp.
+        now = time.time()
+        window = settings.RATE_LIMIT_WINDOW_SECONDS
+        key = f"ratelimit:{identifier}"
+        member = f"{now}:{uuid.uuid4().hex}"
         client = await get_shared_redis()
         try:
-            count = await client.incr(key)
-            if int(count) == 1:
-                await client.expire(key, settings.RATE_LIMIT_WINDOW_SECONDS)
+            pipe = client.pipeline()
+            pipe.zremrangebyscore(key, 0, now - window)
+            pipe.zadd(key, {member: now})
+            pipe.zcard(key)
+            pipe.expire(key, window)
+            _, _, count, _ = await pipe.execute()
         except redis.RedisError:
+            # Fail open: an unavailable limiter must not take the API down with it.
             return await call_next(request)
 
         if int(count) > settings.RATE_LIMIT_REQUESTS:
+            # Rejected requests do not consume quota.
+            await client.zrem(key, member)
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Rate limit exceeded. Try again later."},
+                headers={"Retry-After": str(window)},
             )
         return await call_next(request)

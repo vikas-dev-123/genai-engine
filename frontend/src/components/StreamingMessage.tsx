@@ -19,7 +19,7 @@ function decorateCitations(children: ReactNode): ReactNode {
       part.startsWith("[Source:") ? (
         <span
           key={`s-${idx.toString()}`}
-          className="mx-0.5 rounded bg-jarvis-teal/15 px-1 text-[11px] text-jarvis-teal"
+          className="mx-0.5 rounded bg-engine-teal/15 px-1 text-[11px] text-engine-teal"
         >
           {part}
         </span>
@@ -42,10 +42,10 @@ export function StreamingMessage() {
 
   return (
     <div className="flex gap-3">
-      <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-jarvis-accent text-sm font-bold text-white">
+      <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-engine-accent text-sm font-bold text-white">
         J
       </div>
-      <div className="max-w-[85%] flex-1 rounded-2xl rounded-bl-sm border border-jarvis-border bg-jarvis-surface px-4 py-3 text-sm text-jarvis-text shadow-inner">
+      <div className="max-w-[85%] flex-1 rounded-2xl rounded-bl-sm border border-engine-border bg-engine-surface px-4 py-3 text-sm text-engine-text shadow-inner">
         {activeToolCalls.length > 0 && (
           <div className="mb-3 space-y-2">
             {activeToolCalls.map((tc) => (
@@ -54,10 +54,10 @@ export function StreamingMessage() {
           </div>
         )}
         {!streamingMessage && (
-          <div className="flex items-center gap-1 py-2 text-jarvis-muted">
-            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-jarvis-accent" />
-            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-jarvis-accent" />
-            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-jarvis-accent" />
+          <div className="flex items-center gap-1 py-2 text-engine-muted">
+            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-engine-accent" />
+            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-engine-accent" />
+            <span className="typing-dot inline-block h-2 w-2 rounded-full bg-engine-accent" />
           </div>
         )}
         {streamingMessage && (
@@ -75,7 +75,7 @@ export function StreamingMessage() {
             <span className="blinking-cursor inline-block w-2 translate-y-1" />
           </div>
         )}
-        <div className={clsx("mt-2 h-1 w-24 rounded-full bg-jarvis-border", isStreaming && "animate-pulse")} />
+        <div className={clsx("mt-2 h-1 w-24 rounded-full bg-engine-border", isStreaming && "animate-pulse")} />
       </div>
     </div>
   );

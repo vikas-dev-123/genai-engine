@@ -14,8 +14,27 @@ from models.conversation import Conversation, Message
 from models.user import User
 from schemas.chat import ChatRequest, ConversationResponse, MessageResponse
 from services.llm_service import llm_service
+from services.memory_service import memory_service
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
+
+
+async def _get_owned_conversation(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user: User,
+) -> Conversation:
+    """Return the user's conversation or raise 404 (also for other users' ids)."""
+    result = await db.execute(
+        select(Conversation).where(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user.id,
+        ),
+    )
+    conversation = result.scalar_one_or_none()
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    return conversation
 
 
 @router.post("/stream")
@@ -25,6 +44,8 @@ async def stream_chat(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """Stream assistant output as Server-Sent Events."""
+    if body.conversation_id is not None:
+        await _get_owned_conversation(db, body.conversation_id, current)
 
     async def event_generator():
         conversation_id = str(body.conversation_id) if body.conversation_id else None
@@ -34,7 +55,6 @@ async def stream_chat(
             conversation_id=conversation_id,
             user_name=current.name,
             user_timezone=current.timezone,
-            db=db,
             rag_enabled=body.rag_enabled,
         ):
             yield chunk
@@ -88,14 +108,7 @@ async def conversation_history(
     db: AsyncSession = Depends(get_db),
 ) -> list[MessageResponse]:
     """Return ordered messages for a conversation."""
-    result = await db.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id,
-            Conversation.user_id == current.id,
-        ),
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    await _get_owned_conversation(db, conversation_id, current)
     msgs = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
@@ -111,15 +124,8 @@ async def delete_conversation(
     current: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, bool]:
-    """Delete a conversation and its messages."""
-    result = await db.execute(
-        select(Conversation).where(
-            Conversation.id == conversation_id,
-            Conversation.user_id == current.id,
-        ),
-    )
-    if result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+    """Delete a conversation, its messages, and its memories."""
+    await _get_owned_conversation(db, conversation_id, current)
     await db.execute(
         delete(Conversation).where(
             Conversation.id == conversation_id,
@@ -127,4 +133,5 @@ async def delete_conversation(
         ),
     )
     await db.commit()
+    await memory_service.delete_conversation(str(current.id), str(conversation_id))
     return {"deleted": True}

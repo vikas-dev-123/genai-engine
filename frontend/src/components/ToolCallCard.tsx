@@ -43,31 +43,31 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const outputPreview = (toolCall.output ?? "").slice(0, 200);
 
   return (
-    <div className="mt-2 rounded-lg border border-jarvis-border bg-jarvis-bg/70 p-3 text-xs text-jarvis-muted">
+    <div className="mt-2 rounded-lg border border-engine-border bg-engine-bg/70 p-3 text-xs text-engine-muted">
       <div className="flex items-center gap-2">
         {isRunning ? (
-          <Loader2 className="h-4 w-4 animate-spin text-jarvis-accent" />
+          <Loader2 className="h-4 w-4 animate-spin text-engine-accent" />
         ) : isError ? (
-          <XCircle className="h-4 w-4 text-jarvis-danger" />
+          <XCircle className="h-4 w-4 text-engine-danger" />
         ) : (
-          <CheckCircle2 className="h-4 w-4 text-jarvis-teal" />
+          <CheckCircle2 className="h-4 w-4 text-engine-teal" />
         )}
-        <Icon className="h-4 w-4 text-jarvis-accent" />
-        <span className="font-semibold text-jarvis-text">{toolCall.name}</span>
+        <Icon className="h-4 w-4 text-engine-accent" />
+        <span className="font-semibold text-engine-text">{toolCall.name}</span>
       </div>
-      {isRunning && <p className="mt-1 truncate text-[11px] text-jarvis-muted">{inputPreview}</p>}
+      {isRunning && <p className="mt-1 truncate text-[11px] text-engine-muted">{inputPreview}</p>}
       {!isRunning && toolCall.output !== undefined && (
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="mt-2 w-full rounded-md border border-jarvis-border px-2 py-1 text-left text-[11px] text-jarvis-text hover:bg-jarvis-surface"
+          className="mt-2 w-full rounded-md border border-engine-border px-2 py-1 text-left text-[11px] text-engine-text hover:bg-engine-surface"
         >
           {open ? "Hide output" : "Show output"} — {outputPreview}
           {!open && toolCall.output && toolCall.output.length > 200 ? "…" : ""}
         </button>
       )}
       {open && (
-        <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-black/40 p-2 text-[11px] text-jarvis-text">
+        <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-black/40 p-2 text-[11px] text-engine-text">
           {toolCall.output}
         </pre>
       )}

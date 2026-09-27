@@ -62,23 +62,23 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen bg-jarvis-bg flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-jarvis-border bg-jarvis-surface/80 p-8 shadow-[0_0_40px_rgba(108,99,255,0.15)] backdrop-blur">
+    <div className="min-h-screen bg-engine-bg flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border border-engine-border bg-engine-surface/80 p-8 shadow-[0_0_40px_rgba(108,99,255,0.15)] backdrop-blur">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold tracking-[0.3em] text-jarvis-accent drop-shadow-[0_0_18px_rgba(108,99,255,0.65)]">
-            JARVIS
+          <h1 className="text-3xl font-semibold tracking-[0.3em] text-engine-accent drop-shadow-[0_0_18px_rgba(108,99,255,0.65)]">
+            GENAI ENGINE
           </h1>
-          <p className="mt-2 text-sm text-jarvis-muted">Personal AI console</p>
+          <p className="mt-2 text-sm text-engine-muted">Personal AI console</p>
         </div>
 
-        <div className="flex rounded-lg bg-jarvis-bg border border-jarvis-border p-1 mb-6">
+        <div className="flex rounded-lg bg-engine-bg border border-engine-border p-1 mb-6">
           <button
             type="button"
             onClick={() => setMode("signin")}
             className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
               mode === "signin"
-                ? "bg-jarvis-accent/20 text-jarvis-text"
-                : "text-jarvis-muted hover:text-jarvis-text"
+                ? "bg-engine-accent/20 text-engine-text"
+                : "text-engine-muted hover:text-engine-text"
             }`}
           >
             Sign In
@@ -88,8 +88,8 @@ export function AuthForm() {
             onClick={() => setMode("register")}
             className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
               mode === "register"
-                ? "bg-jarvis-accent/20 text-jarvis-text"
-                : "text-jarvis-muted hover:text-jarvis-text"
+                ? "bg-engine-accent/20 text-engine-text"
+                : "text-engine-muted hover:text-engine-text"
             }`}
           >
             Create Account
@@ -99,11 +99,11 @@ export function AuthForm() {
         <form className="space-y-4" onSubmit={handleSubmit}>
           {mode === "register" && (
             <label className="block">
-              <span className="text-xs text-jarvis-muted">Name</span>
-              <div className="mt-1 flex items-center gap-2 rounded-lg border border-jarvis-border bg-jarvis-bg px-3 py-2">
-                <User className="h-4 w-4 text-jarvis-muted" />
+              <span className="text-xs text-engine-muted">Name</span>
+              <div className="mt-1 flex items-center gap-2 rounded-lg border border-engine-border bg-engine-bg px-3 py-2">
+                <User className="h-4 w-4 text-engine-muted" />
                 <input
-                  className="w-full bg-transparent text-sm text-jarvis-text outline-none"
+                  className="w-full bg-transparent text-sm text-engine-text outline-none"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ada Lovelace"
@@ -114,11 +114,11 @@ export function AuthForm() {
           )}
 
           <label className="block">
-            <span className="text-xs text-jarvis-muted">Email</span>
-            <div className="mt-1 flex items-center gap-2 rounded-lg border border-jarvis-border bg-jarvis-bg px-3 py-2">
-              <Mail className="h-4 w-4 text-jarvis-muted" />
+            <span className="text-xs text-engine-muted">Email</span>
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-engine-border bg-engine-bg px-3 py-2">
+              <Mail className="h-4 w-4 text-engine-muted" />
               <input
-                className="w-full bg-transparent text-sm text-jarvis-text outline-none"
+                className="w-full bg-transparent text-sm text-engine-text outline-none"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -129,11 +129,11 @@ export function AuthForm() {
           </label>
 
           <label className="block">
-            <span className="text-xs text-jarvis-muted">Password</span>
-            <div className="mt-1 flex items-center gap-2 rounded-lg border border-jarvis-border bg-jarvis-bg px-3 py-2">
-              <Lock className="h-4 w-4 text-jarvis-muted" />
+            <span className="text-xs text-engine-muted">Password</span>
+            <div className="mt-1 flex items-center gap-2 rounded-lg border border-engine-border bg-engine-bg px-3 py-2">
+              <Lock className="h-4 w-4 text-engine-muted" />
               <input
-                className="w-full bg-transparent text-sm text-jarvis-text outline-none"
+                className="w-full bg-transparent text-sm text-engine-text outline-none"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -145,11 +145,11 @@ export function AuthForm() {
 
           {mode === "register" && (
             <label className="block">
-              <span className="text-xs text-jarvis-muted">Confirm password</span>
-              <div className="mt-1 flex items-center gap-2 rounded-lg border border-jarvis-border bg-jarvis-bg px-3 py-2">
-                <Lock className="h-4 w-4 text-jarvis-muted" />
+              <span className="text-xs text-engine-muted">Confirm password</span>
+              <div className="mt-1 flex items-center gap-2 rounded-lg border border-engine-border bg-engine-bg px-3 py-2">
+                <Lock className="h-4 w-4 text-engine-muted" />
                 <input
-                  className="w-full bg-transparent text-sm text-jarvis-text outline-none"
+                  className="w-full bg-transparent text-sm text-engine-text outline-none"
                   type="password"
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
@@ -161,7 +161,7 @@ export function AuthForm() {
           )}
 
           {error && (
-            <div className="rounded-md border border-jarvis-danger/60 bg-jarvis-danger/10 px-3 py-2 text-sm text-jarvis-danger">
+            <div className="rounded-md border border-engine-danger/60 bg-engine-danger/10 px-3 py-2 text-sm text-engine-danger">
               {error}
             </div>
           )}
@@ -172,10 +172,10 @@ export function AuthForm() {
               loading ||
               (mode === "register" ? !canSubmitRegister : !canSubmitSignIn || !emailValid)
             }
-            className="relative w-full overflow-hidden rounded-lg bg-jarvis-accent py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_rgba(108,99,255,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+            className="relative w-full overflow-hidden rounded-lg bg-engine-accent py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_rgba(108,99,255,0.35)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {loading && (
-              <span className="absolute inset-0 flex items-center justify-center bg-jarvis-accent/80">
+              <span className="absolute inset-0 flex items-center justify-center bg-engine-accent/80">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-white" />
               </span>
             )}

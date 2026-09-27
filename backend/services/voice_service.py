@@ -109,7 +109,11 @@ class VoiceService:
         except redis.RedisError:
             cached = None
         if cached:
-            return bytes(cached) if isinstance(cached, (bytes, bytearray)) else str(cached).encode("latin-1")
+            return (
+                bytes(cached)
+                if isinstance(cached, (bytes, bytearray))
+                else str(cached).encode("latin-1")
+            )
 
         clip = text[:2000]
         audio_bytes: bytes

@@ -10,13 +10,13 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
-    document.title = "Jarvis AI";
+    document.title = "GenAI Engine";
   }, []);
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-jarvis-bg text-jarvis-muted">
-        Initializing Jarvis…
+      <div className="flex h-screen items-center justify-center bg-engine-bg text-engine-muted">
+        Initializing GenAI Engine…
       </div>
     );
   }
@@ -26,7 +26,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-jarvis-bg text-jarvis-text">
+    <div className="flex h-screen bg-engine-bg text-engine-text">
       <Sidebar />
       <ChatWindow />
     </div>

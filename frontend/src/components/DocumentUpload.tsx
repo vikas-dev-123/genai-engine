@@ -101,10 +101,10 @@ export function DocumentUpload({ isOpen, onClose }: DocumentUploadProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-2xl border border-jarvis-border bg-jarvis-surface p-6 shadow-2xl">
+      <div className="w-full max-w-xl rounded-2xl border border-engine-border bg-engine-surface p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-jarvis-text">Knowledge Base Upload</h3>
-          <button type="button" onClick={onClose} className="rounded-full p-1 text-jarvis-muted hover:text-jarvis-text">
+          <h3 className="text-lg font-semibold text-engine-text">Knowledge Base Upload</h3>
+          <button type="button" onClick={onClose} className="rounded-full p-1 text-engine-muted hover:text-engine-text">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -118,13 +118,13 @@ export function DocumentUpload({ isOpen, onClose }: DocumentUploadProps) {
           onDragLeave={() => setDragActive(false)}
           onDrop={onDrop}
           className={`flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-10 text-center transition ${
-            dragActive ? "border-jarvis-accent bg-jarvis-accent/5" : "border-jarvis-border bg-jarvis-bg"
+            dragActive ? "border-engine-accent bg-engine-accent/5" : "border-engine-border bg-engine-bg"
           }`}
         >
-          <UploadCloud className="mb-3 h-10 w-10 text-jarvis-accent" />
-          <p className="text-sm text-jarvis-text">Drop PDF, TXT, DOCX, or MD files here</p>
-          <p className="text-xs text-jarvis-muted">or click to browse</p>
-          <label className="mt-4 cursor-pointer rounded-md bg-jarvis-accent px-4 py-2 text-sm font-medium text-white">
+          <UploadCloud className="mb-3 h-10 w-10 text-engine-accent" />
+          <p className="text-sm text-engine-text">Drop PDF, TXT, DOCX, or MD files here</p>
+          <p className="text-xs text-engine-muted">or click to browse</p>
+          <label className="mt-4 cursor-pointer rounded-md bg-engine-accent px-4 py-2 text-sm font-medium text-white">
             Browse
             <input
               type="file"
@@ -135,30 +135,30 @@ export function DocumentUpload({ isOpen, onClose }: DocumentUploadProps) {
           </label>
         </div>
 
-        {error && <p className="mt-3 text-sm text-jarvis-danger">{error}</p>}
+        {error && <p className="mt-3 text-sm text-engine-danger">{error}</p>}
 
         {statusText && (
           <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between text-xs text-jarvis-muted">
+            <div className="flex items-center justify-between text-xs text-engine-muted">
               <span>{statusText}</span>
               <span>{progress}%</span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-jarvis-border">
-              <div className="h-full bg-jarvis-accent transition-all" style={{ width: `${progress}%` }} />
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-engine-border">
+              <div className="h-full bg-engine-accent transition-all" style={{ width: `${progress}%` }} />
             </div>
           </div>
         )}
 
         <div className="mt-6 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-jarvis-muted">Uploaded</p>
+          <p className="text-xs uppercase tracking-wide text-engine-muted">Uploaded</p>
           {documents.map((doc) => (
             <div
               key={doc.id}
-              className="flex items-center justify-between rounded-lg border border-jarvis-border bg-jarvis-bg px-3 py-2 text-xs text-jarvis-text"
+              className="flex items-center justify-between rounded-lg border border-engine-border bg-engine-bg px-3 py-2 text-xs text-engine-text"
             >
               <div>
                 <div className="font-medium">{doc.filename}</div>
-                <div className="text-[10px] text-jarvis-muted">
+                <div className="text-[10px] text-engine-muted">
                   {doc.file_type.toUpperCase()} · {doc.num_chunks} chunks ·{" "}
                   {new Date(doc.created_at).toLocaleString()}
                 </div>
@@ -167,17 +167,17 @@ export function DocumentUpload({ isOpen, onClose }: DocumentUploadProps) {
                 <span
                   className={`rounded-full px-2 py-0.5 text-[10px] ${
                     doc.status === "ready"
-                      ? "bg-jarvis-teal/20 text-jarvis-teal"
+                      ? "bg-engine-teal/20 text-engine-teal"
                       : doc.status === "processing"
                         ? "bg-amber-500/20 text-amber-300"
-                        : "bg-jarvis-danger/20 text-jarvis-danger"
+                        : "bg-engine-danger/20 text-engine-danger"
                   }`}
                 >
                   {doc.status}
                 </span>
                 <button
                   type="button"
-                  className="rounded-md border border-jarvis-border p-1 text-jarvis-muted hover:text-jarvis-danger"
+                  className="rounded-md border border-engine-border p-1 text-engine-muted hover:text-engine-danger"
                   onClick={() => {
                     if (window.confirm(`Delete ${doc.filename}?`)) {
                       void removeFromStore(doc.id);

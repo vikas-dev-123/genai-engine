@@ -8,7 +8,7 @@ import {
 } from "../api/auth";
 import type { User } from "../types";
 
-const REFRESH_KEY = "jarvis_refresh_token";
+const REFRESH_KEY = "genai_engine_refresh_token";
 
 interface AuthState {
   user: User | null;

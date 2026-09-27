@@ -1,26 +1,31 @@
-version: "3.9"
+# Production stack. Only Nginx (the frontend container) is published to the host;
+# Postgres, Redis and the API are reachable only on the internal Docker network.
+#
+#   docker compose up -d --build
+#
+# For local development with hot reload, add the dev overlay:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: jarvis
-      POSTGRES_USER: jarvis
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: genai_engine
+      POSTGRES_USER: genai_engine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jarvis"]
+      test: ["CMD-SHELL", "pg_isready -U genai_engine -d genai_engine"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -31,16 +36,18 @@ services:
 
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
-    env_file: .env
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
-      DATABASE_URL: postgresql+asyncpg://jarvis:password@postgres:5432/jarvis
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://genai_engine:${POSTGRES_PASSWORD}@postgres:5432/genai_engine
       REDIS_URL: redis://redis:6379/0
+      USE_FAKE_REDIS: "false"
       FAISS_INDEX_DIR: /app/data/faiss
       WORKSPACE_DIR: /app/data/workspace
     volumes:
-      - ./backend:/app
       - faiss_data:/app/data/faiss
       - workspace_data:/app/data/workspace
     depends_on:
@@ -48,17 +55,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     ports:
-      - "3000:80"
+      - "${HTTP_PORT:-3000}:80"
     depends_on:
       backend:
         condition: service_healthy

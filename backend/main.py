@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from config import settings
-from db.base import Base
 from db.session import engine
 from middleware.logging_middleware import LoggingMiddleware
 from middleware.rate_limiter import RateLimiterMiddleware
@@ -22,7 +21,10 @@ from routers import auth_router, chat_router, rag_router, voice_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Configure logging, schema, and local data paths."""
+    """Configure logging and local data paths.
+
+    The database schema is managed by Alembic (`alembic upgrade head`), not created here.
+    """
     _ = app
     timestamper = structlog.processors.TimeStamper(fmt="iso")
     shared = [
@@ -31,9 +33,10 @@ async def lifespan(app: FastAPI):
         timestamper,
     ]
     level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
-    if settings.ENVIRONMENT.lower() == "production":
+    if settings.is_production:
         structlog.configure(
-            processors=shared + [structlog.processors.JSONRenderer()],
+            processors=shared
+            + [structlog.processors.format_exc_info, structlog.processors.JSONRenderer()],
             wrapper_class=structlog.make_filtering_bound_logger(level),
             context_class=dict,
             logger_factory=structlog.PrintLoggerFactory(),
@@ -53,23 +56,26 @@ async def lifespan(app: FastAPI):
     if settings.DATABASE_URL.startswith("sqlite"):
         os.makedirs("data", exist_ok=True)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    logger = structlog.get_logger("jarvis")
-    logger.info("Jarvis AI started.", model=settings.GEMINI_MODEL)
+    logger = structlog.get_logger("genai_engine")
+    logger.info("startup", app=settings.APP_NAME, model=settings.GEMINI_MODEL)
 
     yield
 
-    logger.info("Jarvis AI shutting down")
+    logger.info("shutdown")
     await close_shared_redis()
     await engine.dispose()
 
 
+APP_VERSION = "1.0.0"
+
 app = FastAPI(
-    title="Jarvis AI",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version=APP_VERSION,
     lifespan=lifespan,
+    # Interactive API docs are a development aid; don't publish them in production.
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
 
 app.add_middleware(
@@ -106,8 +112,10 @@ async def health() -> dict:
         redis_state = "error"
 
     return {
-        "status": "healthy" if db_state == "connected" and redis_state == "connected" else "degraded",
-        "version": "1.0.0",
+        "status": (
+            "healthy" if db_state == "connected" and redis_state == "connected" else "degraded"
+        ),
+        "version": APP_VERSION,
         "model": settings.GEMINI_MODEL,
         "db": db_state,
         "redis": redis_state,

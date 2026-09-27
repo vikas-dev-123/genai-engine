@@ -24,7 +24,7 @@ function decorateCitations(children: ReactNode): ReactNode {
       part.startsWith("[Source:") ? (
         <span
           key={`src-${idx.toString()}`}
-          className="mx-0.5 rounded bg-jarvis-teal/15 px-1 text-[11px] text-jarvis-teal"
+          className="mx-0.5 rounded bg-engine-teal/15 px-1 text-[11px] text-engine-teal"
         >
           {part}
         </span>
@@ -51,13 +51,13 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
       <div className="flex justify-end gap-3">
         <div
           className={clsx(
-            "max-w-[80%] rounded-2xl rounded-br-sm bg-jarvis-accent px-4 py-3 text-sm text-white shadow-lg",
+            "max-w-[80%] rounded-2xl rounded-br-sm bg-engine-accent px-4 py-3 text-sm text-white shadow-lg",
             isStreaming && "animate-pulse",
           )}
         >
           <p className="whitespace-pre-wrap">{message.content}</p>
         </div>
-        <div className="mt-1 h-9 w-9 rounded-full bg-jarvis-accent/40 text-center text-sm font-semibold leading-9 text-white">
+        <div className="mt-1 h-9 w-9 rounded-full bg-engine-accent/40 text-center text-sm font-semibold leading-9 text-white">
           U
         </div>
       </div>
@@ -66,11 +66,11 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
 
   return (
     <div className="group flex gap-3">
-      <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-jarvis-accent text-sm font-bold text-white">
+      <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-engine-accent text-sm font-bold text-white">
         J
       </div>
-      <div className="max-w-[85%] flex-1 rounded-2xl rounded-bl-sm border border-jarvis-border bg-jarvis-surface px-4 py-3 text-sm text-jarvis-text shadow-inner">
-        <div className="prose prose-invert max-w-none prose-pre:bg-black/40 prose-pre:border prose-pre:border-jarvis-border">
+      <div className="max-w-[85%] flex-1 rounded-2xl rounded-bl-sm border border-engine-border bg-engine-surface px-4 py-3 text-sm text-engine-text shadow-inner">
+        <div className="prose prose-invert max-w-none prose-pre:bg-black/40 prose-pre:border prose-pre:border-engine-border">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight]}
@@ -91,18 +91,18 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
                 const lang = /language-([\w-]+)/.exec(className ?? "")?.[1];
                 if (inline) {
                   return (
-                    <code className="rounded bg-black/50 px-1 py-0.5 text-xs text-jarvis-teal">
+                    <code className="rounded bg-black/50 px-1 py-0.5 text-xs text-engine-teal">
                       {text}
                     </code>
                   );
                 }
                 return (
-                  <div className="relative my-2 overflow-hidden rounded-lg border border-jarvis-border bg-black/60">
-                    <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wide text-jarvis-muted">
+                  <div className="relative my-2 overflow-hidden rounded-lg border border-engine-border bg-black/60">
+                    <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase tracking-wide text-engine-muted">
                       <span>{lang ?? "code"}</span>
                       <button
                         type="button"
-                        className="rounded border border-jarvis-border px-2 py-0.5 text-[10px] text-jarvis-text hover:bg-jarvis-surface"
+                        className="rounded border border-engine-border px-2 py-0.5 text-[10px] text-engine-text hover:bg-engine-surface"
                         onClick={() => void navigator.clipboard.writeText(text)}
                       >
                         Copy
@@ -134,9 +134,9 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
             ))}
           </div>
         ) : null}
-        <div className="mt-2 flex items-center justify-between text-[10px] text-jarvis-muted opacity-0 transition group-hover:opacity-100">
+        <div className="mt-2 flex items-center justify-between text-[10px] text-engine-muted opacity-0 transition group-hover:opacity-100">
           <span>{new Date(message.created_at).toLocaleString()}</span>
-          <button type="button" onClick={() => void handleCopy()} className="hover:text-jarvis-text">
+          <button type="button" onClick={() => void handleCopy()} className="hover:text-engine-text">
             {copied ? "Copied" : "Copy"}
           </button>
         </div>

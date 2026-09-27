@@ -8,7 +8,7 @@
   }
 
   body {
-    @apply bg-jarvis-bg text-jarvis-text font-sans antialiased;
+    @apply bg-engine-bg text-engine-text font-sans antialiased;
   }
 
   ::-webkit-scrollbar {
@@ -20,7 +20,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-jarvis-border;
+    @apply rounded-full bg-engine-border;
   }
 }
 

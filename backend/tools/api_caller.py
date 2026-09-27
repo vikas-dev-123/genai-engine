@@ -16,7 +16,12 @@ class APICallInput(BaseModel):
     url: str = Field(description="Full HTTPS URL to call")
     method: str = Field(default="GET", description="HTTP method")
     headers: dict[str, str] = Field(default_factory=dict)
-    body: dict | None = Field(default=None, description="Optional JSON body for POST/PUT/PATCH")
+    # A JSON string rather than `dict | None`: Optional fields become `anyOf` in the JSON
+    # schema, which langchain-google-genai cannot convert into a Gemini function declaration.
+    body: str = Field(
+        default="",
+        description='Optional JSON body for POST/PUT/PATCH as a JSON string, e.g. {"a": 1}',
+    )
 
 
 class APICallerTool(BaseTool):
@@ -25,7 +30,7 @@ class APICallerTool(BaseTool):
     name: str = "api_call"
     description: str = (
         "Make HTTP requests to external APIs. "
-        'Provide url, method, optional headers, optional JSON body in the "body" field. '
+        'Provide url, method, optional headers, and an optional JSON string in the "body" field. '
         "Only whitelisted domains are allowed."
     )
     args_schema: type[BaseModel] = APICallInput
@@ -36,21 +41,28 @@ class APICallerTool(BaseTool):
         allowed = [d.lower() for d in settings.ALLOWED_API_DOMAINS]
         return host in allowed
 
+    def _parse_body(self, body: str) -> dict | list | None:
+        return json.loads(body) if body.strip() else None
+
     def _run(
         self,
         url: str,
         method: str = "GET",
         headers: dict[str, str] | None = None,
-        body: dict | None = None,
+        body: str = "",
     ) -> str:
         hdrs = headers or {}
         if not self._domain_allowed(url):
             return f"Domain not whitelisted. Allowed: {settings.ALLOWED_API_DOMAINS}"
         try:
+            payload = self._parse_body(body)
+        except json.JSONDecodeError as exc:
+            return f"Invalid JSON body: {exc!s}"
+        try:
             m = method.upper()
             with httpx.Client(timeout=30.0) as client:
-                if m in ("POST", "PUT", "PATCH") and body is not None:
-                    resp = client.request(m, url, headers=hdrs, json=body)
+                if m in ("POST", "PUT", "PATCH") and payload is not None:
+                    resp = client.request(m, url, headers=hdrs, json=payload)
                 else:
                     resp = client.request(m, url, headers=hdrs)
             text = resp.text
@@ -65,16 +77,20 @@ class APICallerTool(BaseTool):
         url: str,
         method: str = "GET",
         headers: dict[str, str] | None = None,
-        body: dict | None = None,
+        body: str = "",
     ) -> str:
         hdrs = headers or {}
         if not self._domain_allowed(url):
             return f"Domain not whitelisted. Allowed: {settings.ALLOWED_API_DOMAINS}"
         try:
+            payload = self._parse_body(body)
+        except json.JSONDecodeError as exc:
+            return f"Invalid JSON body: {exc!s}"
+        try:
             m = method.upper()
             async with httpx.AsyncClient(timeout=30.0) as client:
-                if m in ("POST", "PUT", "PATCH") and body is not None:
-                    resp = await client.request(m, url, headers=hdrs, json=body)
+                if m in ("POST", "PUT", "PATCH") and payload is not None:
+                    resp = await client.request(m, url, headers=hdrs, json=payload)
                 else:
                     resp = await client.request(m, url, headers=hdrs)
             text = resp.text

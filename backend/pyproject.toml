@@ -1,0 +1,9 @@
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+extend-exclude = '\.venv'
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".venv"]

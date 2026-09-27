@@ -1,0 +1,24 @@
+# Development overlay: live-reloading API with the source mounted, and every
+# service port published for local tools (psql, redis-cli, direct API calls).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    environment:
+      ENVIRONMENT: development
+    volumes:
+      - ./backend:/app
+      - faiss_data:/app/data/faiss
+      - workspace_data:/app/data/workspace
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -17,24 +17,27 @@ pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto", bcrypt_
 
 
 def hash_password(password: str) -> str:
-    """Hash a plaintext password with bcrypt."""
-    # bcrypt has a 72-byte input limit; truncate the UTF-8 bytes to avoid runtime errors
-    encoded = password.encode("utf-8")
-    if len(encoded) > 72:
-        encoded = encoded[:72]
-        # decode safely, ignoring incomplete sequences
-        password = encoded.decode("utf-8", errors="ignore")
+    """Hash a plaintext password.
+
+    bcrypt_sha256 pre-hashes with SHA-256, so the full password counts
+    (plain bcrypt silently ignores everything after 72 bytes).
+    """
     return pwd_context.hash(password)
 
 
+def _legacy_truncate(password: str) -> str:
+    """Earlier releases cut passwords to 72 UTF-8 bytes before hashing."""
+    return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
+
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify a plaintext password against a bcrypt hash."""
-    # Apply same truncation rule used when hashing to ensure verification matches
-    encoded = plain.encode("utf-8")
-    if len(encoded) > 72:
-        encoded = encoded[:72]
-        plain = encoded.decode("utf-8", errors="ignore")
-    return pwd_context.verify(plain, hashed)
+    """Verify a plaintext password against a stored hash."""
+    if pwd_context.verify(plain, hashed):
+        return True
+    # Accounts created by earlier releases with passwords over 72 bytes were
+    # hashed from the truncated form; keep them able to log in.
+    truncated = _legacy_truncate(plain)
+    return truncated != plain and pwd_context.verify(truncated, hashed)
 
 
 def create_access_token(user_id: str) -> str:

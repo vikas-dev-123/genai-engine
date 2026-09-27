@@ -72,12 +72,12 @@ export function ChatWindow() {
   };
 
   return (
-    <div className="flex h-full flex-1 flex-col bg-jarvis-bg">
-      <header className="flex items-center justify-between border-b border-jarvis-border px-6 py-3">
+    <div className="flex h-full flex-1 flex-col bg-engine-bg">
+      <header className="flex items-center justify-between border-b border-engine-border px-6 py-3">
         <div>
           {editingTitle ? (
             <input
-              className="rounded-md border border-jarvis-border bg-jarvis-surface px-2 py-1 text-sm text-jarvis-text"
+              className="rounded-md border border-engine-border bg-engine-surface px-2 py-1 text-sm text-engine-text"
               value={titleDraft}
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={() => {
@@ -90,14 +90,14 @@ export function ChatWindow() {
           ) : (
             <button
               type="button"
-              className="text-left text-sm font-semibold text-jarvis-text"
+              className="text-left text-sm font-semibold text-engine-text"
               onClick={() => setEditingTitle(true)}
             >
               {title}
             </button>
           )}
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-jarvis-muted">
-            <span className={`h-2 w-2 rounded-full ${ragEnabled ? "bg-jarvis-teal" : "bg-jarvis-muted"}`} />
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-engine-muted">
+            <span className={`h-2 w-2 rounded-full ${ragEnabled ? "bg-engine-teal" : "bg-engine-muted"}`} />
             RAG {ragEnabled ? "on" : "off"}
           </div>
         </div>
@@ -105,7 +105,7 @@ export function ChatWindow() {
           type="button"
           onClick={() => setVoiceMode(!voiceMode)}
           className={`rounded-full border px-3 py-1 text-xs ${
-            voiceMode ? "border-jarvis-accent text-jarvis-accent" : "border-jarvis-border text-jarvis-muted"
+            voiceMode ? "border-engine-accent text-engine-accent" : "border-engine-border text-engine-muted"
           }`}
         >
           Voice mode
@@ -114,16 +114,16 @@ export function ChatWindow() {
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
         {listMessages.length === 0 && !isStreaming && (
-          <div className="flex h-full flex-col items-center justify-center text-center text-jarvis-muted">
-            <div className="mb-4 text-lg font-semibold text-jarvis-accent">JARVIS</div>
-            <p className="mb-6 text-sm text-jarvis-text">How can I help you today?</p>
+          <div className="flex h-full flex-col items-center justify-center text-center text-engine-muted">
+            <div className="mb-4 text-lg font-semibold text-engine-accent">GENAI ENGINE</div>
+            <p className="mb-6 text-sm text-engine-text">How can I help you today?</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => onSuggestion(s)}
-                  className="rounded-full border border-jarvis-border px-3 py-1 text-xs text-jarvis-text hover:border-jarvis-accent"
+                  className="rounded-full border border-engine-border px-3 py-1 text-xs text-engine-text hover:border-engine-accent"
                 >
                   {s}
                 </button>
@@ -141,15 +141,15 @@ export function ChatWindow() {
 
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="border-t border-jarvis-border bg-jarvis-surface/40 px-4 py-3 backdrop-blur"
+        className="border-t border-engine-border bg-engine-surface/40 px-4 py-3 backdrop-blur"
       >
         <div className="flex items-end gap-3">
           <VoiceButton onTranscript={(t) => setInput((prev) => `${prev} ${t}`.trim())} />
           <div className="flex-1">
             <textarea
-              className="w-full resize-none rounded-xl border border-jarvis-border bg-jarvis-bg px-3 py-2 text-sm text-jarvis-text outline-none focus:border-jarvis-accent"
+              className="w-full resize-none rounded-xl border border-engine-border bg-engine-bg px-3 py-2 text-sm text-engine-text outline-none focus:border-engine-accent"
               rows={Math.min(5, Math.max(2, input.split("\n").length))}
-              placeholder="Message Jarvis..."
+              placeholder="Message GenAI Engine..."
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -161,13 +161,13 @@ export function ChatWindow() {
               disabled={isStreaming}
             />
             {input.length > 1000 && (
-              <div className="mt-1 text-right text-[11px] text-jarvis-muted">{input.length} characters</div>
+              <div className="mt-1 text-right text-[11px] text-engine-muted">{input.length} characters</div>
             )}
           </div>
           <button
             type="submit"
             disabled={!input.trim() || isStreaming}
-            className="rounded-xl bg-jarvis-accent px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-jarvis-accent/30 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-xl bg-engine-accent px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-engine-accent/30 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Send
           </button>

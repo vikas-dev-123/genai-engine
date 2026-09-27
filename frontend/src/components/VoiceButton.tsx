@@ -56,15 +56,15 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
         className={clsx(
           "relative flex h-12 w-12 items-center justify-center rounded-full border-2 transition",
           isRecording
-            ? "border-jarvis-danger shadow-[0_0_18px_rgba(255,71,87,0.55)]"
-            : "border-jarvis-border hover:border-jarvis-accent",
+            ? "border-engine-danger shadow-[0_0_18px_rgba(255,71,87,0.55)]"
+            : "border-engine-border hover:border-engine-accent",
           toggleOn && isRecording && "animate-pulse",
         )}
       >
         {isProcessing ? (
-          <Loader2 className="h-5 w-5 animate-spin text-jarvis-accent" />
+          <Loader2 className="h-5 w-5 animate-spin text-engine-accent" />
         ) : (
-          <Mic className={clsx("h-5 w-5", isRecording ? "text-jarvis-danger" : "text-jarvis-text")} />
+          <Mic className={clsx("h-5 w-5", isRecording ? "text-engine-danger" : "text-engine-text")} />
         )}
       </button>
       {isRecording && (
@@ -72,7 +72,7 @@ export function VoiceButton({ onTranscript }: VoiceButtonProps) {
           {waveformData.map((v, idx) => (
             <div
               key={idx.toString()}
-              className="w-1 rounded-full bg-jarvis-danger transition-all"
+              className="w-1 rounded-full bg-engine-danger transition-all"
               style={{ height: `${8 + v * 24}px` }}
             />
           ))}

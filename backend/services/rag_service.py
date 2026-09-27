@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
-import json
 import os
 import uuid
 from typing import Any
 
 import docx
-import faiss
 import fitz
 import numpy as np
 from sqlalchemy import delete, select
@@ -20,21 +19,9 @@ from models.document import Document as DocumentORM
 from schemas.document import ChunkResult, DocumentResponse
 from utils.chunker import chunker
 from utils.embedder import embedder
+from utils.faiss_store import FaissStore, normalize_vectors
 
-
-def _normalize_vectors(vectors: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1.0, norms)
-    return vectors / norms
-
-
-def _meta_for_vector_id(metas: list[dict[str, Any]], faiss_id: int) -> dict[str, Any] | None:
-    for m in metas:
-        if int(m.get("faiss_index", -1)) == faiss_id:
-            return m
-    if 0 <= faiss_id < len(metas):
-        return metas[faiss_id]
-    return None
+MIN_RELEVANCE_SCORE = 0.70
 
 
 def _mmr_select_rows(
@@ -58,8 +45,7 @@ def _mmr_select_rows(
         for r in remaining:
             rel = candidate_scores[r]
             sims = [
-                float(np.dot(candidate_embeddings[r], candidate_embeddings[s]))
-                for s in selected
+                float(np.dot(candidate_embeddings[r], candidate_embeddings[s])) for s in selected
             ]
             max_sim = max(sims) if sims else 0.0
             mmr = lambda_mult * rel - (1.0 - lambda_mult) * max_sim
@@ -78,14 +64,8 @@ class RAGService:
     def __init__(self) -> None:
         pass
 
-    def _ensure_docs_dir(self, user_id: str) -> str:
-        path = os.path.join(settings.FAISS_INDEX_DIR, str(user_id), "docs")
-        os.makedirs(path, exist_ok=True)
-        return path
-
-    def _paths(self, user_id: str) -> tuple[str, str]:
-        base = self._ensure_docs_dir(user_id)
-        return os.path.join(base, "index.faiss"), os.path.join(base, "meta.json")
+    def _store(self, user_id: str) -> FaissStore:
+        return FaissStore(os.path.join(settings.FAISS_INDEX_DIR, str(user_id), "docs"))
 
     def _detect_type(self, filename: str) -> str:
         ext = filename.rsplit(".", 1)[-1].lower()
@@ -152,20 +132,9 @@ class RAGService:
             if existing.scalar_one_or_none() is None:
                 raise ValueError("Document record not found for ingest")
         try:
-            pages = self._extract_pages(file_bytes, file_type)
+            pages = await asyncio.to_thread(self._extract_pages, file_bytes, file_type)
             chunks = chunker.chunk_by_page(pages)
             uid_s = str(user_id)
-            for i, ch in enumerate(chunks):
-                md = ch.metadata or {}
-                md.update(
-                    {
-                        "filename": filename,
-                        "doc_id": str(doc_uuid),
-                        "user_id": uid_s,
-                        "chunk_index": i,
-                    },
-                )
-                ch.metadata = md
             texts = [c.page_content for c in chunks]
             if not texts:
                 result = await db.execute(select(DocumentORM).where(DocumentORM.id == doc_uuid))
@@ -178,46 +147,19 @@ class RAGService:
                 return DocumentResponse.model_validate(row)
 
             embeddings = await embedder.embed_batch(texts)
-            vectors = np.array(embeddings, dtype="float32")
-            vectors = _normalize_vectors(vectors)
-
-            index_path, meta_path = self._paths(uid_s)
-            if os.path.exists(index_path):
-                index = faiss.read_index(index_path)
-            else:
-                index = faiss.IndexFlatIP(vectors.shape[1])
-            metas: list[dict[str, Any]] = []
-            if os.path.exists(meta_path):
-                try:
-                    with open(meta_path, encoding="utf-8") as f:
-                        loaded = json.load(f)
-                    metas = loaded if isinstance(loaded, list) else []
-                except (OSError, json.JSONDecodeError):
-                    metas = []
-            start_idx = index.ntotal
-            if vectors.shape[0] > 0:
-                if index.d != vectors.shape[1]:
-                    raise RuntimeError("Embedding dimension mismatch for existing index.")
-                index.add(vectors)
-            new_metas: list[dict[str, Any]] = []
-            for i, ch in enumerate(chunks):
-                md = ch.metadata or {}
-                new_metas.append(
-                    {
-                        "content": ch.page_content,
-                        "filename": md.get("filename", filename),
-                        "page_number": md.get("page_number"),
-                        "doc_id": str(doc_uuid),
-                        "user_id": uid_s,
-                        "chunk_index": int(md.get("chunk_index", i)),
-                        "faiss_index": start_idx + i,
-                    },
-                )
-            metas.extend(new_metas)
-            if vectors.shape[0] > 0:
-                faiss.write_index(index, index_path)
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(metas, f, indent=2)
+            vectors = normalize_vectors(np.array(embeddings, dtype="float32"))
+            new_metas: list[dict[str, Any]] = [
+                {
+                    "content": ch.page_content,
+                    "filename": filename,
+                    "page_number": (ch.metadata or {}).get("page_number"),
+                    "doc_id": str(doc_uuid),
+                    "user_id": uid_s,
+                    "chunk_index": i,
+                }
+                for i, ch in enumerate(chunks)
+            ]
+            await asyncio.to_thread(self._store(uid_s).add, vectors, new_metas)
 
             result = await db.execute(select(DocumentORM).where(DocumentORM.id == doc_uuid))
             row = result.scalar_one()
@@ -246,41 +188,19 @@ class RAGService:
     ) -> list[ChunkResult]:
         """Search the user's knowledge index with embedding + MMR."""
         k = k or settings.MAX_RAG_RESULTS
-        index_path, meta_path = self._paths(str(user_id))
-        if not os.path.exists(index_path) or not os.path.exists(meta_path):
+        store = self._store(str(user_id))
+        if not os.path.exists(store.index_path):
             return []
-        try:
-            with open(meta_path, encoding="utf-8") as f:
-                metas = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return []
-        if not metas:
-            return []
-        index = faiss.read_index(index_path)
-        q = np.array([await embedder.embed_text(query)], dtype="float32")
-        q = _normalize_vectors(q)
-        nprobe = min(index.ntotal, max(k * 2, k))
-        scores, ids = index.search(q, nprobe)
-        candidates: list[tuple[int, float, dict[str, Any]]] = []
-        for rank, idx in enumerate(ids[0]):
-            if idx < 0:
-                continue
-            score = float(scores[0][rank])
-            if score < 0.70:
-                continue
-            meta = _meta_for_vector_id(metas, int(idx))
-            if meta is None:
-                continue
-            candidates.append((idx, score, meta))
+        q = normalize_vectors(np.array([await embedder.embed_text(query)], dtype="float32"))
+        candidates = await asyncio.to_thread(store.search, q, k * 2, MIN_RELEVANCE_SCORE)
         if not candidates:
             return []
-        cand_indices = [c[0] for c in candidates]
-        cand_scores = [c[1] for c in candidates]
-        cand_matrix = np.vstack([index.reconstruct(int(i)) for i in cand_indices])
+        cand_scores = [c[0] for c in candidates]
+        cand_matrix = np.vstack([c[2] for c in candidates])
         mmr_rows = _mmr_select_rows(cand_matrix, cand_scores, k)
         out: list[ChunkResult] = []
         for row_i in mmr_rows:
-            _faiss_i, score, meta = candidates[row_i]
+            score, meta, _vector = candidates[row_i]
             out.append(
                 ChunkResult(
                     content=str(meta.get("content", "")),
@@ -312,39 +232,10 @@ class RAGService:
     ) -> None:
         """Remove all chunks for a document and delete the database row."""
         uid = str(user_id)
-        index_path, meta_path = self._paths(uid)
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    metas = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                metas = []
-        else:
-            metas = []
-        keep = [m for m in metas if str(m.get("doc_id")) != str(doc_id)]
-        if os.path.exists(index_path) and os.path.exists(meta_path):
-            try:
-                old_index = faiss.read_index(index_path)
-                dim = old_index.d
-                new_index = faiss.IndexFlatIP(dim)
-                new_vectors: list[np.ndarray] = []
-                for m in keep:
-                    idx = int(m.get("faiss_index", -1))
-                    if 0 <= idx < old_index.ntotal:
-                        new_vectors.append(old_index.reconstruct(idx))
-                if new_vectors:
-                    mat = np.vstack(new_vectors).astype("float32")
-                    new_index.add(mat)
-                faiss.write_index(new_index, index_path)
-                for i, m in enumerate(keep):
-                    m["faiss_index"] = i
-                with open(meta_path, "w", encoding="utf-8") as f:
-                    json.dump(keep, f, indent=2)
-            except Exception:
-                if os.path.exists(index_path):
-                    os.remove(index_path)
-                with open(meta_path, "w", encoding="utf-8") as f:
-                    json.dump([], f)
+        await asyncio.to_thread(
+            self._store(uid).remove_where,
+            lambda m: str(m.get("doc_id")) == str(doc_id),
+        )
         await db.execute(
             delete(DocumentORM).where(
                 DocumentORM.id == uuid.UUID(str(doc_id)),

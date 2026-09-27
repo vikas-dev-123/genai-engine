@@ -8,27 +8,20 @@ import os
 import shutil
 from datetime import datetime, timezone
 
-import faiss
 import numpy as np
 import redis.asyncio as redis
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 from config import settings
 from redis_client import get_shared_redis
 from utils.embedder import embedder
+from utils.faiss_store import FaissStore, normalize_vectors
 
 SHORT_TERM_TTL_SECONDS = 24 * 3600
 SHORT_TERM_MAX_MESSAGES = 20
 LONG_TERM_TOP_K = 5
 LONG_TERM_SCORE_THRESHOLD = 0.75
-
-
-def _normalize_vectors(vectors: np.ndarray) -> np.ndarray:
-    """L2-normalize rows for inner-product ↔ cosine similarity."""
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms = np.where(norms == 0, 1.0, norms)
-    return vectors / norms
 
 
 class MemoryService:
@@ -118,18 +111,11 @@ class MemoryService:
         else:
             await client.set(key, json.dumps(messages), ex=SHORT_TERM_TTL_SECONDS)
 
-    def _ensure_memory_dir(self, user_id: str) -> str:
-        path = os.path.join(settings.FAISS_INDEX_DIR, user_id, "memory")
-        os.makedirs(path, exist_ok=True)
-        return path
+    def _memory_dir(self, user_id: str) -> str:
+        return os.path.join(settings.FAISS_INDEX_DIR, str(user_id), "memory")
 
-    def _memory_paths(self, user_id: str) -> tuple[str, str, str]:
-        base = self._ensure_memory_dir(user_id)
-        return (
-            os.path.join(base, "index.faiss"),
-            os.path.join(base, "meta.json"),
-            base,
-        )
+    def _store(self, user_id: str) -> FaissStore:
+        return FaissStore(self._memory_dir(user_id))
 
     async def add_long_term(
         self,
@@ -139,37 +125,14 @@ class MemoryService:
         conversation_id: str,
     ) -> None:
         """Persist a conversational exchange in FAISS-backed long-term memory."""
-        text = f"User: {user_msg}\nJarvis: {assistant_msg}"
-        vector = await embedder.embed_text(text)
-        arr = np.array([vector], dtype="float32")
-        arr = _normalize_vectors(arr)
-        index_path, meta_path, _base = self._memory_paths(str(user_id))
-        if os.path.exists(index_path):
-            index = faiss.read_index(index_path)
-        else:
-            index = faiss.IndexFlatIP(arr.shape[1])
-        index.add(arr)
-        faiss.write_index(index, index_path)
-        meta: list[dict]
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, encoding="utf-8") as f:
-                    meta = json.load(f)
-                if not isinstance(meta, list):
-                    meta = []
-            except (OSError, json.JSONDecodeError):
-                meta = []
-        else:
-            meta = []
-        meta.append(
-            {
-                "content": text,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "conversation_id": str(conversation_id),
-            },
-        )
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
+        text = f"User: {user_msg}\nAssistant: {assistant_msg}"
+        vector = normalize_vectors(np.array(await embedder.embed_batch([text]), dtype="float32"))
+        meta = {
+            "content": text,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "conversation_id": str(conversation_id),
+        }
+        await asyncio.to_thread(self._store(user_id).add, vector, [meta])
 
     async def search_long_term(
         self,
@@ -178,40 +141,32 @@ class MemoryService:
         k: int = LONG_TERM_TOP_K,
     ) -> list[dict]:
         """Retrieve top similar memories above a similarity threshold."""
-        index_path, meta_path, _base = self._memory_paths(str(user_id))
-        if not os.path.exists(index_path) or not os.path.exists(meta_path):
+        store = self._store(user_id)
+        if not os.path.exists(store.index_path):
             return []
-        try:
-            with open(meta_path, encoding="utf-8") as f:
-                meta = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return []
-        if not meta:
-            return []
-        q = np.array([await embedder.embed_text(query)], dtype="float32")
-        q = _normalize_vectors(q)
-        index = faiss.read_index(index_path)
-        limit = min(index.ntotal, max(k * 4, k))
-        scores, ids = index.search(q, limit)
-        results: list[dict] = []
-        for rank, idx in enumerate(ids[0]):
-            if idx < 0:
-                continue
-            score = float(scores[0][rank])
-            if score < LONG_TERM_SCORE_THRESHOLD:
-                continue
-            if 0 <= idx < len(meta):
-                row = meta[idx]
-                content = str(row.get("content", ""))
-                results.append(
-                    {
-                        "content": content,
-                        "score": score,
-                        "timestamp": str(row.get("timestamp", "")),
-                    },
-                )
+        q = normalize_vectors(np.array([await embedder.embed_text(query)], dtype="float32"))
+        hits = await asyncio.to_thread(store.search, q, k * 4, LONG_TERM_SCORE_THRESHOLD)
+        results = [
+            {
+                "content": str(meta.get("content", "")),
+                "score": score,
+                "timestamp": str(meta.get("timestamp", "")),
+            }
+            for score, meta, _vector in hits
+        ]
         results.sort(key=lambda r: r["score"], reverse=True)
         return results[:k]
+
+    async def delete_conversation(self, user_id: str, conversation_id: str) -> None:
+        """Forget one conversation: its Redis buffer and its long-term memories."""
+        client = await self._redis()
+        await client.delete(self._memory_key(user_id, conversation_id))
+        store = self._store(user_id)
+        if os.path.exists(store.index_path):
+            await asyncio.to_thread(
+                store.remove_where,
+                lambda m: m.get("conversation_id") == str(conversation_id),
+            )
 
     async def delete_all(self, user_id: str) -> None:
         """Remove all short-term keys and on-disk long-term index for a user."""
@@ -219,7 +174,7 @@ class MemoryService:
         prefix = f"memory:{user_id}:"
         async for key in client.scan_iter(f"{prefix}*"):
             await client.delete(key)
-        _, _, base = self._memory_paths(str(user_id))
+        base = self._memory_dir(user_id)
         if os.path.isdir(base):
             shutil.rmtree(base, ignore_errors=True)
 

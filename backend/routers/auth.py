@@ -1,17 +1,14 @@
 """Authentication API routes."""
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import get_current_user, get_db
 from models.user import User
-from schemas.auth import (
-    LoginRequest,
-    RefreshRequest,
-    RegisterRequest,
-    TokenResponse,
-    UserResponse,
-)
+from schemas.auth import LoginRequest, RefreshRequest, RegisterRequest, TokenResponse, UserResponse
 from services.auth_service import (
     create_access_token,
     create_refresh_token,
@@ -70,27 +67,28 @@ async def login(
 @router.post("/refresh")
 async def refresh_session(
     body: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """Issue a new access token from a valid refresh token."""
+    """Issue a new access token from a valid refresh token for an active user."""
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid refresh token",
+    )
     try:
         payload = decode_token(body.refresh_token)
     except HTTPException:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        ) from None
+        raise invalid from None
     if payload.get("type") != "refresh":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
-    sub = payload.get("sub")
-    if sub is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
-    access = create_access_token(str(sub))
+        raise invalid
+    try:
+        user_id = uuid.UUID(str(payload.get("sub")))
+    except ValueError:
+        raise invalid from None
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise invalid
+    access = create_access_token(str(user.id))
     return {"access_token": access, "token_type": "bearer"}
 
 

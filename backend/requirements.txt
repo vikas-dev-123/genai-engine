@@ -1,14 +1,17 @@
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
+gunicorn==22.0.0
 sqlalchemy[asyncio]==2.0.30
 asyncpg==0.29.0
 aiosqlite==0.20.0
 alembic==1.13.1
-pydantic==2.7.1
+pydantic==2.7.4
 pydantic-settings==2.3.0
-pydantic[email]==2.7.1
+pydantic[email]==2.7.4
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# passlib 1.7.4 breaks with bcrypt>=4.1 (removed __about__, 72-byte ValueError in its self-test).
+bcrypt==4.0.1
 langchain==0.2.5
 langchain-core==0.2.10
 langchain-google-genai==1.0.6
@@ -26,6 +29,7 @@ structlog==24.2.0
 httpx==0.27.0
 python-multipart==0.0.9
 aiofiles==23.2.1
+filelock==3.15.4
 pytest==8.2.2
 pytest-asyncio==0.23.7
 numpy==1.26.4

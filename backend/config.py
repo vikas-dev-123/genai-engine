@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_DIR = Path(__file__).resolve().parent
@@ -15,7 +15,7 @@ for candidate in (_REPO_ROOT / ".env", _BACKEND_DIR / ".env"):
 
 
 class Settings(BaseSettings):
-    """Central configuration for Jarvis AI backend."""
+    """Central configuration for the GenAI Engine backend."""
 
     model_config = SettingsConfigDict(
         env_file=_env_files or ".env",
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
 
     # App
-    APP_NAME: str = "Jarvis AI"
+    APP_NAME: str = "GenAI Engine"
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
     # Declared as str|list so .env comma-separated values are not JSON-decoded by pydantic-settings.
@@ -32,14 +32,14 @@ class Settings(BaseSettings):
 
     # Gemini
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_TEMPERATURE: float = 0.7
 
     # Embeddings (Gemini free)
-    EMBEDDING_MODEL: str = "models/text-embedding-004"
+    EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Database (default: local SQLite file — override for Postgres in production/Docker)
-    DATABASE_URL: str = "sqlite+aiosqlite:///./data/jarvis.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/genai_engine.db"
     REDIS_URL: str = "redis://localhost:6379/0"
     # Use in-process fake Redis (no Redis server). OK for local dev; use real Redis in production.
     USE_FAKE_REDIS: bool = False
@@ -76,6 +76,28 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [item.strip() for item in v.split(",") if item.strip()]
         return v
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
+
+    @model_validator(mode="after")
+    def check_production_safety(self) -> "Settings":
+        """Refuse to boot in production with development-only settings."""
+        if not self.is_production:
+            return self
+        problems: list[str] = []
+        if len(self.JWT_SECRET_KEY) < 32 or "your_" in self.JWT_SECRET_KEY:
+            problems.append("JWT_SECRET_KEY must be a random value of at least 32 characters")
+        if self.USE_FAKE_REDIS:
+            problems.append(
+                "USE_FAKE_REDIS must be false (in-process Redis is not shared across workers)"
+            )
+        if "*" in self.CORS_ORIGINS:
+            problems.append("CORS_ORIGINS must list explicit origins, not '*'")
+        if problems:
+            raise ValueError("Unsafe production configuration: " + "; ".join(problems))
+        return self
 
 
 settings = Settings()

@@ -1,8 +1,8 @@
 """FastAPI dependencies."""
 
+import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-import uuid
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
